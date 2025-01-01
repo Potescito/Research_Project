@@ -37,10 +37,26 @@ if __name__ == "__main__":
     sigma_z = 1.0
     sigma_r = 0.9
 
-    # let's test in a single video
-    tensor_gt = torch.tensor(dataset[n[0]], dtype=torch.float32, device=dev)
-    tensor_in = torch.tensor(noisy_ds[n[0]], dtype=torch.float32, device=dev)
+    min_frames = min(video.shape[0] for video in dataset.values())
+    
+    resized_videos = []
+    resi_no_videos = []
+    for video in dataset.values():
+        resized_video = video[:min_frames]  # Truncate to the minimum number of frames
+        resized_videos.append(resized_video)
+        
+    for video in noisy_ds.values():
+        resized_video = video[:min_frames]  # Truncate to the minimum number of frames
+        resi_no_videos.append(resized_video)
 
+    stacked_video_array = np.stack(resized_videos, axis=0)
+    stacked_video_arrayn = np.stack(resi_no_videos, axis=0)
+    
+    
+    # let's test in a single video
+    tensor_gt = torch.tensor(stacked_video_array, dtype=torch.float32, device=dev).permute(0, 2, 3, 1)[:, None, ...]
+    tensor_in = torch.tensor(stacked_video_arrayn, dtype=torch.float32, device=dev).permute(0, 2 , 3, 1)[:, None, ...]
+    
     # Initialize filter layer.
     layer_JBF = JointBilateralFilter3d(sigma_x, sigma_y, sigma_z, sigma_r, use_gpu=True)
 
@@ -69,4 +85,4 @@ if __name__ == "__main__":
     axes[2].set_title('Ground truth', fontsize=14)
     axes[2].axis('off')
     plt.show()
-
+# %%
