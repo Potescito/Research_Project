@@ -19,7 +19,6 @@ Here is an example image from the project when using image fusion/upsampling to 
 ![GSA](./images/gsa.png)
 
 ___
-___
 Author: Julián Hernández Potes (julian.hernandez.potes@fau.de)
 
 Tutor: Tomás Arias Vergara (tomas.arias@fau.de)
