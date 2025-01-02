@@ -8,6 +8,7 @@ Research Project WiSe 2024/25
 import os
 import cv2
 import numpy as np
+from typing import Union
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 class VideoProcessor(object):
