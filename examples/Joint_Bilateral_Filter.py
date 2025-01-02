@@ -38,10 +38,10 @@ if __name__ == "__main__":
     resized_videos = []
     resi_no_videos = []
     for video, noisy in zip(dataset.values(), noisy_ds.values()):
-        resized_video = video[:min_frames]  
+        resized_video = video #[:min_frames]  
         resized_videos.append(resized_video)
         
-        resized_video = noisy[:min_frames]
+        resized_video = noisy #[:min_frames]
         resi_no_videos.append(resized_video)
 
     stacked_video_array = np.stack(resized_videos, axis=0) # [B, CH, X, Y]
