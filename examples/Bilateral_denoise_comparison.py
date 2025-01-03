@@ -18,7 +18,7 @@ from src.metrics import NRMSE, PSNR, SSIM
 
 if __name__ == "__main__":
     dataset_path = r"../data/dataset_2drt_video_only"
-    nSubs = [f"sub{str(i).zfill(3)}" for i in range(1, 11)]
+    nSubs = [f"sub{str(i).zfill(3)}" for i in range(1, 2)]
     vp = VideoProcessor(dataset_path, nSubs=nSubs, norm=True)
     
     dataset = vp.extract_frames(target="vcv")
@@ -33,7 +33,7 @@ if __name__ == "__main__":
     for i, (video_name, frames) in enumerate(noisy_ds.items()):
         print(f"[{i+1}/{len(noisy_ds)}]", video_name, frames.shape)
                 
-        denoised_frames = denoise_bilateral(frames, win_size=3, sigma_color=0.5, sigma_spatial=-2, channel_axis=0) # model selection?
+        denoised_frames = denoise_bilateral(frames, win_size=3, sigma_color=0.64, sigma_spatial=-0.18, channel_axis=0) # model selection?
         denoised_ds[video_name] = np.stack(denoised_frames, axis=0)
 
         if i < 5:
@@ -66,4 +66,4 @@ if __name__ == "__main__":
     print(tabulate.tabulate(df, headers='keys', tablefmt='grid'))
 
 
-    # df.to_csv(f"Metrics/metrics_bilat_{nSubs[0]}_{nSubs[-1]}_3_0.5_-2.csv", index=False)
+    df.to_csv(f"Metrics/metrics_bilat_{nSubs[0]}_{nSubs[-1]}_3_0.5_-2.csv", index=False)
