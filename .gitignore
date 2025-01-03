@@ -126,3 +126,4 @@ cython_debug/
 
 # First dataset
 data/dataset_2drt_video_only/
+data/sub001/
