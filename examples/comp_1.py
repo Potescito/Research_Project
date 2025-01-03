@@ -20,6 +20,7 @@ from skimage.restoration import denoise_bilateral
 from src.GSA import GSA
 from joint_bilateral_filter_layer import JointBilateralFilter3d
 import time
+import src.utils as ut
 
 if __name__ in ["__main__", "__mp_main__"]:
     """
@@ -185,3 +186,9 @@ if __name__ in ["__main__", "__mp_main__"]:
     print(chart)
 
     df.to_csv("Metrics/denoising_metrics_comparison.csv", index=False)
+    
+    ut.save_ds("Metrics/noise.npz", noisy_ds)
+    ut.save_ds("Metrics/denoised_af.npz", denoised_af)
+    ut.save_ds("Metrics/denoised_bf.npz", denoised_bf)    
+    ut.save_ds("Metrics/denoised_gsa.npz", denoised_gsa)    
+    ut.save_ds("Metrics/denoised_jbl.npz", denoised_jbl)    
