@@ -147,13 +147,13 @@ class VideoProcessor(object):
         # Handle case where data is a single array
         if isinstance(data, np.ndarray):
             output_path = os.path.join(output_dir, "single.mp4")
-            write_video(data, output_path)
+            _write_video(data, output_path)
 
         # Handle case where data is a dictionary
         elif isinstance(data, dict):
             for name, array in data.items():
                 output_path = os.path.join(output_dir, f"{name}.mp4")
-                write_video(array, output_path)
+                _write_video(array, output_path)
 
         else:
             raise ValueError("Input must be a numpy array or a dictionary of numpy arrays.")
