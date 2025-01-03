@@ -125,4 +125,4 @@ cython_debug/
 *.pptx
 
 # First dataset
-data/*
+data/dataset_2drt_video_only/
