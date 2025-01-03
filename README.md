@@ -18,6 +18,9 @@ Here is an example image from the project when using image fusion/upsampling to 
 
 ![GSA](./images/gsa.png)
 
+And here a complete comparison between the methods tested so far, with three image quality metrics:
+
+![Comp](./images/comp_1.png)
 ___
 Author: Julián Hernández Potes (julian.hernandez.potes@fau.de)
 
