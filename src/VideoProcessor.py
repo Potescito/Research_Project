@@ -21,8 +21,10 @@ class VideoProcessor(object):
             nSubs (list, optional) : List of subjects to extract the frames. Defaults to ["sub001"].
             norm (bool, optional)   : Normalize the frames. Defaults to True.
         """
+        if not os.path.exists(dataset_path):
+            raise FileNotFoundError(f"Dataset path {dataset_path} does not exist.")
         self.norm = norm
-        self.dataset_path = dataset_path
+        self.dataset_path = str(dataset_path) # compatibility with Pathlib
         self.video_files = self._list_video_files(nSubs)
 
     def _list_video_files(self, nSubs):
@@ -79,7 +81,7 @@ class VideoProcessor(object):
         Args:
             dataset (dict): Set of frames to add noise. Expected shape of the keys: (Frames, Height, Width)
             type (str, optional): Noise distribution type. Defaults to 'speckle'.
-                                  ["gaussian", "speckle", "rayleigh"]
+                                  ["gaussian", "speckle", "rayleigh", "rician"]
             mean (float, optional): Mean of the noise. Defaults to 0.
             std (float, optional): Standard deviation of the noise. Defaults to 1.
         
@@ -95,6 +97,7 @@ class VideoProcessor(object):
                 n_frames = frames + noise
                 n_dataset[name] = np.clip(n_frames, 0, 1) # should I normalize instead? wouldnt that change the overall intensity of the frames?
         elif type == 'speckle':
+            print("Note: Multiplicative speckle noise.")
             for name, frames in dataset.items():
                 noise = np.random.normal(mean, std, frames.shape)
                 n_frames = frames + frames * noise
@@ -106,9 +109,15 @@ class VideoProcessor(object):
                 noise = np.random.rayleigh(std, frames.shape)
                 n_frames = frames + noise
                 n_dataset[name] = np.clip(n_frames, 0, 1)  
-
+        elif type == 'rician':
+            print("Note: Simulated Rician-distributed noise.")
+            for name, frames in dataset.items(): 
+                noise_r = np.random.rayleigh(std, frames.shape)
+                noise_g = np.random.normal(mean, std, frames.shape)
+                n_frames = np.where((frames >= 0) & (frames < 0.25), (frames + noise_r), (frames + noise_g)) # 0.25 threshold chosen arbitrarily
+                n_dataset[name] = np.clip(n_frames, 0, 1)
         else:
-            raise ValueError("Invalid noise type. Choose between 'gaussian', 'rayleigh' or 'speckle'.")
+            raise ValueError("Invalid noise type. Choose between 'gaussian', 'rayleigh', 'speckle' or 'rician'.")
 
         return n_dataset
 
@@ -124,7 +133,6 @@ class VideoProcessor(object):
             output_dir (str): Directory where the video(s) will be saved.
             fps (int, optional): Frames per second for the output video(s). Defaults to 30.
         """
-        # Ensure the output directory exists
         os.makedirs(output_dir, exist_ok=True)
 
         def _write_video(array, output_path):
@@ -160,10 +168,9 @@ class VideoProcessor(object):
     
 # %% ==================================================================================
 if __name__ == "__main__":
-    from pathlib import Path
     from VideoProcessor import VideoProcessor
-    dataset_path = Path("../data/dataset_2drt_video_only")
+    dataset_path = r"../data/dataset_2drt_video_only"
     processor = VideoProcessor(dataset_path, ["sub001", "sub005"])
-
     a = processor.extract_frames(target="vcv")
-    # print(processor.video_files)
+    print(a.keys())
+# %%
