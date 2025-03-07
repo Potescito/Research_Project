@@ -70,5 +70,3 @@ if __name__ == "__main__":
     plt.show()
     plt.imshow(imgs[n[0]][10], cmap="gray"), plt.colorbar()
     plt.show()
-
-# %%

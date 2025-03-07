@@ -17,6 +17,8 @@ from src.GSA import GSA
 from src.psnlm import psnlm
 from src.utils import imshow
 from src.metrics import NRMSE, PSNR, SSIM
+# from joint_bilateral_filter_layer import JointBilateralFilter3d
+# import time
 
 if __name__ == "__main__":
     dataset_path = r"../data/dataset_2drt_video_only"
@@ -27,5 +29,3 @@ if __name__ == "__main__":
     n = list(dataset.keys())
     
     denoised_ds = {}
-
-    imshow([dataset[n[0]]])
