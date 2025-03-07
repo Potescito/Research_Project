@@ -50,6 +50,7 @@ def psnlm(img: np.ndarray, g_sigma=0.2, h=2, templateWindowSize=9, searchWindowS
     return np.stack(denoised_img, axis=0)
 
 # %%
+from psnlm import psnlm
 from VideoProcessor import VideoProcessor
 import matplotlib.pyplot as plt
 import time
