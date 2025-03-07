@@ -49,25 +49,26 @@ def psnlm(img: np.ndarray, g_sigma=0.2, h=2, templateWindowSize=9, searchWindowS
 
     return np.stack(denoised_img, axis=0)
 
-# %%
-from psnlm import psnlm
-from VideoProcessor import VideoProcessor
-import matplotlib.pyplot as plt
-import time
+# %% Debugging
+if __name__ == "__main__":
+    from psnlm import psnlm
+    from VideoProcessor import VideoProcessor
+    import matplotlib.pyplot as plt
+    import time
 
-ds = VideoProcessor(r"../data/dataset_2drt_video_only", nSubs=["sub001"], norm=True)
-imgs = ds.extract_frames(target="vcv")
-# imgs = ds.noise(imgs, type="gaussian", mean=0, std=0.1)
-n = list(imgs.keys())
-print(n)
+    ds = VideoProcessor(r"../data/dataset_2drt_video_only", nSubs=["sub001"], norm=True)
+    imgs = ds.extract_frames(target="vcv")
+    # imgs = ds.noise(imgs, type="gaussian", mean=0, std=0.1)
+    n = list(imgs.keys())
+    print(n)
 
-s = time.time()
-a = psnlm(imgs[n[0]])
-print(time.time() - s)
+    s = time.time()
+    a = psnlm(imgs[n[0]])
+    print(time.time() - s)
 
-plt.imshow(a[10], cmap="gray"), plt.colorbar()
-plt.show()
-plt.imshow(imgs[n[0]][10], cmap="gray"), plt.colorbar()
-plt.show()
+    plt.imshow(a[10], cmap="gray"), plt.colorbar()
+    plt.show()
+    plt.imshow(imgs[n[0]][10], cmap="gray"), plt.colorbar()
+    plt.show()
 
 # %%
