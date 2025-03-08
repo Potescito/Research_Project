@@ -63,8 +63,12 @@ def calc_snr(src: np.ndarray, signal_box_coords: tuple, noise_box_coords: tuple)
     signal_y, signal_x, signal_width, signal_height = signal_box_coords
     noise_y, noise_x, noise_width, noise_height = noise_box_coords
 
-    signal = src[signal_y: signal_y + signal_height, signal_x:signal_x + signal_width]
-    noise = src[noise_y: noise_y + noise_height, noise_x:noise_x + noise_width]
+    if src.ndim == 3:
+        signal = src[:, signal_y: signal_y + signal_height, signal_x:signal_x + signal_width]
+        noise = src[:, noise_y: noise_y + noise_height, noise_x:noise_x + noise_width]
+    else:
+        signal = src[signal_y: signal_y + signal_height, signal_x:signal_x + signal_width]
+        noise = src[noise_y: noise_y + noise_height, noise_x:noise_x + noise_width]
     return np.mean(signal) / np.std(noise)
 
 def annotate_metrics(src : np.ndarray, 
