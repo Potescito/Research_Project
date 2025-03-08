@@ -28,6 +28,9 @@ plt.rcParams['figure.constrained_layout.use'] = True
 
 
 if __name__ == "__main__":
+    """
+    Script to make quantitative comparisons amongst denoising methods in the original image
+    """
     dataset_path = r"../data/dataset_2drt_video_only"
     nSubs = [f"sub{str(i).zfill(3)}" for i in range(1, 10)]
     vp = VideoProcessor(dataset_path, nSubs=nSubs, norm=True)
