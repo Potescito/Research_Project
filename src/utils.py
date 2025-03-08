@@ -9,6 +9,10 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
 
+plt.rcParams['font.family'] = 'serif'
+plt.rcParams['font.serif'] = ['DejaVu Serif', 'Liberation Serif']
+plt.rcParams["font.size"] = 12
+
 def save_ds(path: str, dataset: dict):
     """ 
     Save a dataset as a .npz file.
