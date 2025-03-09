@@ -23,7 +23,7 @@ if __name__ == "__main__":
     dataset = vp.extract_frames(target="vcv")
     n = list(dataset.keys())
 
-    noise_type = "speckle"
+    noise_type = "rician"
     noisy_ds = vp.noise(dataset, type=noise_type, mean=0, std=0.2) # ref
     noise_psnr = PSNR(dataset[n[0]], noisy_ds[n[0]])
 
@@ -44,8 +44,8 @@ if __name__ == "__main__":
     _, axi = plt.subplots(4, 4, figsize=(15, 15))
 
     video_name = n[0]
-    # frames = noisy_ds[video_name]
-    frames = dataset[video_name]
+    frames = noisy_ds[video_name]
+    # frames = dataset[video_name]
     print(video_name, frames.shape)
     for idx, g in enumerate(win_size):
         denoised_frames = np.stack(denoise_bilateral(frames, win_size=g, sigma_color=0.64, sigma_spatial=-0.18, channel_axis=0), axis=0)

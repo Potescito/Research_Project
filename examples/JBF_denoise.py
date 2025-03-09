@@ -49,16 +49,22 @@ if __name__ == "__main__":
     
     
     # JBL parameters (initialization if training)
-    # sigma_x = 3.9574406147003174 #1.8602454662322998 #1.2
-    # sigma_y = -0.18808746337890625 #0.3205803632736206 #1.2
-    # sigma_z = -0.17778436839580536 #0.31436747312545776 #1.0
-    # sigma_r = 0.6407924294471741 #0.4918845295906067 #0.8
-    
     sigma_x = 5.582812786102295
     sigma_y =  0.47077813744544983
     sigma_z = -0.09726442396640778
     sigma_r = 0.2528565227985382
-    
+
+    # Speckle Noise std 0.2 ==
+    # sigma_x = 3.9574406147003174 #1.8602454662322998 # 10 epochs only 
+    # sigma_y = -0.18808746337890625 #0.3205803632736206 
+    # sigma_z = -0.17778436839580536 #0.31436747312545776 
+    # sigma_r = 0.6407924294471741 #0.4918845295906067
+
+    # Speckle Noise std 0.1 == SE VE RE MAL
+    # Sigma x: 0.6738337278366089
+    # Sigma y: -3.687140464782715
+    # Sigma z: -3.881937265396118
+    # Sigma range: -2.1178953647613525
     
     # Original image only ====
     # Sigma x: -2.9593870639801025
@@ -80,7 +86,21 @@ if __name__ == "__main__":
     # Sigma z: -0.09726442396640778
     # Sigma range: 0.2528565227985382
     # ====================
-    
+
+    # Gaussian Noise std 0.1 ==
+    # Sigma x: 4.923066139221191
+    # Sigma y: 0.4249637722969055
+    # Sigma z: 0.4046649932861328
+    # Sigma range: 0.5922497510910034
+    # ====================
+
+    # Rayleigh Noise std 0.1 ==
+    # Sigma x: 5.862839698791504
+    # Sigma y: 0.4379822909832001
+    # Sigma z: 0.422762006521225
+    # Sigma range: 0.16013535857200623
+    # ====================
+
     
     # Initialize filter layer.
     layer_JBF = JointBilateralFilter3d(sigma_x, sigma_y, sigma_z, sigma_r, use_gpu=True)

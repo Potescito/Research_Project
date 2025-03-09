@@ -29,8 +29,8 @@ if __name__ == "__main__":
     dataset = vp.extract_frames(target="vcv")
     n = list(dataset.keys())
 
-    noise_type = "speckle"
-    noisy_ds = vp.noise(dataset, type=noise_type, mean=0, std=0.2)
+    noise_type = "rayleigh"
+    noisy_ds = vp.noise(dataset, type=noise_type, mean=0, std=0.1)
     
     # JBL module requires this input array shape -> (B, C, X, Y, Z)
     min_frames = min(video.shape[0] for video in dataset.values()) # To be able to stack videos of diff size

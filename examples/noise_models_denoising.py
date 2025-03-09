@@ -32,7 +32,7 @@ if __name__ == "__main__":
     """
     dev = "cuda" if torch.cuda.is_available() else "cpu"
     dataset_path = r"../data/dataset_2drt_video_only"
-    nSubs = [f"sub{str(i).zfill(3)}" for i in range(1, 10)]
+    nSubs = [f"sub{str(i).zfill(3)}" for i in range(1, 6)]
     vp = VideoProcessor(dataset_path, nSubs=nSubs, norm=True)
     
     # Extracting frames =======================================================
@@ -71,8 +71,12 @@ if __name__ == "__main__":
     timestamp_jbl_gpu = 0
     # ==========================================================================
     
-    # Trained on std 0.1 Rician noise
-    layer_JBF = JointBilateralFilter3d(5.582812786102295, 0.47077813744544983, -0.09726442396640778, 0.2528565227985382, use_gpu=True) 
+    # TJBF params ==============================================================
+    sigma_x = 5.582812786102295
+    sigma_y = 0.47077813744544983
+    sigma_z = -0.09726442396640778
+    sigma_r = 0.2528565227985382
+    layer_JBF = JointBilateralFilter3d(sigma_x, sigma_y, sigma_z, sigma_r, use_gpu=True) 
 
     for i, (video_name, frames) in enumerate(noisy_ds.items()):
         print(f"[{i+1}/{len(dataset)}]", video_name, frames.shape)
@@ -87,7 +91,7 @@ if __name__ == "__main__":
         # Anisotropic Filtering 
         # ========================================================
         s = time.time()
-        d = anisotropic_diffusion(frames, num_iter=8, kappa=0.6, gamma=0.0067, option=2)
+        d = anisotropic_diffusion(frames, num_iter=12, kappa=2, gamma=0.003, option=2)
         timestamp_af += time.time() - s
         adf[video_name] = d
 
@@ -109,7 +113,7 @@ if __name__ == "__main__":
         # PSNLM Filtering
         # ========================================================
         s = time.time()
-        d = psnlm(frames, g_sigma=0.25, h=2, templateWindowSize=21, searchWindowSize=3)
+        d = psnlm(frames, g_sigma=0.25, h=10, templateWindowSize=21, searchWindowSize=3)
         timestamp_nlm += time.time() - s
         nlm[video_name] = d
 
@@ -168,18 +172,19 @@ if __name__ == "__main__":
     # skip = 1
     # names = [n[i] for i in range(1, len(n), skip)[:columns]]
     names = ['sub003_2drt_03_vcv3_r1_video', 
-             'sub003_2drt_01_vcv1_r2_video'
+             'sub001_2drt_02_vcv2_r1_video',
+             'sub004_2drt_01_vcv1_r1_video'
              ]
 
     ds_list = [dataset, noisy_ds, adf, bf, nlm, gsa, tjbf]
     dataset_labels = ["GT", "NS", "ADF", "BF", "GSA", "PSNLM", "T-JBF"]
     metric_list = [noise_metrics, adf_metrics, bf_metrics, nlm_metrics, gsa_metrics, tjbf_metrics]
 
-    fig, ax = plt.subplots(len(dataset_labels), len(names), figsize=(14, 16)) 
+    fig, ax = plt.subplots(len(dataset_labels), len(names), figsize=(8, 18)) 
 
     for j, (ds, label) in enumerate(zip(ds_list, dataset_labels)):
         for i, name in enumerate(names):
-            ax[j, i].imshow(ds[i][frame], cmap="gray")
+            ax[j, i].imshow(ds[name][frame], cmap="gray")
             ax[j, i].set_xticks([])
             ax[j, i].set_yticks([])
             if i == 0:
@@ -196,9 +201,9 @@ if __name__ == "__main__":
 
                 text = f"NRMSE: {nrmse:.2f}\nPSNR: {psnr:.1f}\nSSIM: {ssim:.3f}"
                 if j == 1:
-                    ax[j, i].text(3, 65, text, fontsize=8, color="white", va="top", ha="left")
+                    ax[j, i].text(3, 65, text, fontsize=10, color="white", va="top", ha="left")
                 else:
-                    ax[j, i].text(3, 65, text, fontsize=8, color="yellow", va="top", ha="left")
+                    ax[j, i].text(3, 65, text, fontsize=10, color="yellow", va="top", ha="left")
         if j > 1:
             ax[j, len(names)-1].annotate(
                 f"Avg: {method_times[label]:.2f} s", xy=(1.05, 0.5), xycoords="axes fraction",
@@ -209,5 +214,13 @@ if __name__ == "__main__":
     plt.show()
     # fig.savefig('../images/original.pdf')
 
+    # Tables =============
+    for i, mt in enumerate(metric_list):
+        print(i)
+        avg_nrmse = sum(entry["NRMSE"] for entry in mt.values()) / len(n)
+        avg_psnr  = sum(entry["PSNR"] for entry in mt.values()) / len(n)
+        avg_ssim  = sum(entry["SSIM"] for entry in mt.values()) / len(n)
+        print(f"AVGNRMSE:{avg_nrmse}, AVGPSNR: {avg_psnr}, AVGSSIM: {avg_ssim}")
+    
 # %%
 # VideoProcessor.video(nlm, output_dir="../data/output_original_nlm/", fps=60)
