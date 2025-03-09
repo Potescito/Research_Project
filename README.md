@@ -18,15 +18,15 @@ Here is an example image from the project when using image fusion/upsampling to 
 
 ![GSA](./images/gsa.png)
 
-And here a complete comparison between the methods tested so far, with three image quality metrics:
+And here a complete comparison between the methods tested so far:
 
 ![Comp](./images/ori.png)
 
-Also, when noise is added:
+Also, when noise is added, and with three distinct quality metrics:
 
-![Noise](./images/ray.png)
+<img src="./images/ray.png" width=50% height=50%>
 
-## The final report of the project can be found here: ![Report](./FAU_Research_Project_Report.pdf)
+## The final report of the project can be found here: [Report](./FAU_Research_Project_Report.pdf)
 ___
 Author: Julián Hernández Potes (julian.hernandez.potes@fau.de)
 
