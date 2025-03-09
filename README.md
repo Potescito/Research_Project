@@ -20,7 +20,11 @@ Here is an example image from the project when using image fusion/upsampling to 
 
 And here a complete comparison between the methods tested so far, with three image quality metrics:
 
-![Comp](./images/comp_1.png)
+![Comp](./images/orig.pdf)
+
+Also, when noise is added:
+
+![Noise](./images/speckle.pdf)
 ___
 Author: Julián Hernández Potes (julian.hernandez.potes@fau.de)
 
