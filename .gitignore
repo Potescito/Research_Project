@@ -127,6 +127,8 @@ cython_debug/
 # First dataset
 data/dataset_2drt_video_only/
 data/sub001/
+data/MRI_Span_Audios_Denoised_16kHz_Full.zip
+data/audios_denoised_16khz/
 
 #
 examples/Metrics/denoised*
