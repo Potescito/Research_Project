@@ -5,6 +5,10 @@ Research Project WiSe 2024/25
 - Tutor:    Tomas Arias
 - Email:    tomas.arias@fau.de
 """
+import os
+import torch
+import torchaudio
+import cv2
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
@@ -16,16 +20,91 @@ plt.rcParams["font.size"] = 12
 def save_ds(path: str, dataset: dict):
     """ 
     Save a dataset as a .npz file.
+
+    Args:
+        path (str): Path to save the .npz file.
+        dataset (dict): Dictionary containing the dataset.
     """
     np.savez(path, **dataset)
+
 
 def load_ds(path: str):
     """ 
     Load a dataset from a .npz file.
+
+    Args:
+        path (str): Path to the .npz file.
     """
     ds = np.load(path, allow_pickle=True)
     ds = {key: ds[key].item() if ds[key].ndim==0 else ds[key] for key in ds}
     return ds
+
+
+def save_waveforms(waveforms, names, output_dir='waveforms', sample_rate=16000):
+    """
+    Saves each waveform in the batch as an audio .wav file.
+    
+    Args:
+        waveforms (torch.Tensor or np.ndarray): Batched waveforms with shape (batch_size, num_samples).
+        names(list): List of names for each waveform -> can be the audio path of the dataloader.
+        output_dir (str): Directory to save the audio .wav files.
+        sample_rate (int): Sample rate for the saved audio.
+    """
+    os.makedirs(output_dir, exist_ok=True)
+    
+    if hasattr(waveforms, 'cpu'):
+        waveforms = waveforms.cpu().numpy()
+    
+    for i, waveform in enumerate(waveforms):
+        if waveform.ndim == 1:
+            waveform_to_save = np.expand_dims(waveform, axis=0) # must have channel dimension
+        else:
+            waveform_to_save = waveform
+        
+        name = names[i].split("/")[-1].split(".")[0]
+
+        file_path = os.path.join(output_dir, f'{name}.wav')
+        waveform_tensor = torch.tensor(waveform_to_save, dtype=torch.float32)
+        torchaudio.save(file_path, waveform_tensor, sample_rate)
+
+
+def save_videos(videos, names, output_dir='videos', fps=83, codec='mp4v'):
+    """
+    Saves each video in the batch as an MP4 file using OpenCV's VideoWriter.
+    
+    Args:
+        videos (torch.Tensor or np.ndarray): Batched videos with shape (batch_size, frames, 1, height, width).
+        names(list): List of names for each video -> can be the video path of the dataloader.
+        output_dir (str): Directory to save the video MP4 files.
+        fps (int): Frames per second for the output video.
+        codec (str): FourCC code for the video codec. Default is 'mp4v'.
+    """
+    os.makedirs(output_dir, exist_ok=True)
+    
+    if hasattr(videos, 'cpu'):
+        videos = videos.cpu().numpy()
+    
+    batch_size = videos.shape[0]
+    
+    for i in range(batch_size):
+        video = videos[i]  # shape: (frames, 1, height, width)
+        video = np.squeeze(video, axis=1)  # now shape: (frames, height, width)
+        video_uint8 = (video * 255).astype(np.uint8)
+        
+        # Determine height and width from the first frame.
+        height, width = video_uint8[0].shape
+        
+        name = names[i].split("/")[-1].split(".")[0]
+
+        output_path = os.path.join(output_dir, f'{name}.mp4')
+        fourcc = cv2.VideoWriter_fourcc(*codec)
+        # Create VideoWriter. If your codec struggles with grayscale, you could convert frames to BGR.
+        out = cv2.VideoWriter(output_path, fourcc, fps, (width, height), isColor=False)
+        
+        for frame in video_uint8:
+            out.write(frame)
+        out.release()
+
 
 def imshow(imgs: list,
            snr: bool = True,
