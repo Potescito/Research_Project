@@ -1,3 +1,10 @@
+"""
+Research Project WiSe 2024/25
+- Author:   Julian Hernandez
+- Email:    julian.hernandez.potes@fau.de
+- Tutor:    Tomas Arias
+- Email:    tomas.arias@fau.de
+"""
 import numpy as np
 import torch
 
