@@ -71,4 +71,4 @@ if __name__ == "__main__":
     processor = Wav2Vec2Processor.from_pretrained("facebook/wav2vec2-base-960h")
     model = Wav2Vec2Model.from_pretrained("facebook/wav2vec2-base-960h").to(device)
     
-    extract_audio_features(train_loader, processor, model, device, output_dir="features_w2v/train_1")
+    extract_audio_features(val_loader, processor, model, device, output_dir="features_w2v/test_1")
