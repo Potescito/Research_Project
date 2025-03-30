@@ -43,7 +43,7 @@ def train_one_epoch(model, dataloader, criterion, optimizer, device):
             param.grad = None
 
         # Fwd
-        with torch.amp.autocast(device=device):
+        with torch.amp.autocast(device_type="cuda"):
             outputs = model(waveforms, frames) #  (B, num_windows, window_video, 1, H, W)
             loss = criterion(outputs, frames) # I know it's wrong :(
         scaler.scale(loss).backward()
