@@ -34,17 +34,22 @@ def cleanup():
 def train_one_epoch(model, dataloader, criterion, optimizer, device):
     model.train()
     running_loss = 0.0
+    scaler = torch.amp.GradScaler(device=device)
     for waveforms, frames, _, _ in dataloader:
         waveforms = waveforms.to(device)  # (B, num_windows, window_audio)
         frames = frames.to(device) #  (B, num_windows, window_video, 1, H, W)
-        optimizer.zero_grad()
-        # Fwd
-        outputs = model(waveforms, frames) #  (B, num_windows, window_video, 1, H, W)
+        # optimizer.zero_grad()
+        for param in model.parameters():
+            param.grad = None
 
-        loss = criterion(outputs, frames) # I know it's wrong :(
-        loss.backward()
-        optimizer.step()
+        # Fwd
+        with torch.amp.autocast(device=device):
+            outputs = model(waveforms, frames) #  (B, num_windows, window_video, 1, H, W)
+            loss = criterion(outputs, frames) # I know it's wrong :(
+        scaler.scale(loss).backward()
+        scaler.step(optimizer) #.step()
         running_loss += loss.item() * waveforms.size(0) # MSE or L1, its an avg 
+        scaler.update()
     return running_loss / len(dataloader.dataset) # true avg, not avg of avgs
 
 def validate_one_epoch(model, dataloader, criterion, device):
@@ -109,23 +114,24 @@ def train(rank, world_size, args): # ranks are unique ids assigned to each proce
     scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=args.lr_step, gamma=args.lr_gamma)
     
     num_epochs = args.epochs
-    for epoch in range(1, num_epochs + 1):
-        if rank == 0:
-            print("hola")
-        train_sampler.set_epoch(epoch)
-        epoch_start = time.time()
-        train_loss = train_one_epoch(model, train_loader, criterion, optimizer, device)
-        val_loss = validate_one_epoch(model, val_loader, criterion, device)
-        scheduler.step()
-        
-        if rank == 0:
-            print(f"Epoch {epoch}/{num_epochs} - Time: {time.time() - epoch_start:.2f}s "
-                  f"Train Loss: {train_loss:.4f} Val Loss: {val_loss:.4f}")
-            # Save checkpoint.
-            checkpoint_path = os.path.join(args.checkpoint_dir, f"basic_net_sw{epoch}.pth")
-            torch.save(model.state_dict(), checkpoint_path)
-    
-    cleanup()
+    try:
+        for epoch in range(1, num_epochs + 1):
+            if rank == 0:
+                print("hola")
+            train_sampler.set_epoch(epoch)
+            epoch_start = time.time()
+            train_loss = train_one_epoch(model, train_loader, criterion, optimizer, device)
+            val_loss = validate_one_epoch(model, val_loader, criterion, device)
+            scheduler.step()
+            
+            if rank == 0:
+                print(f"Epoch {epoch}/{num_epochs} - Time: {time.time() - epoch_start:.2f}s "
+                    f"Train Loss: {train_loss:.4f} Val Loss: {val_loss:.4f}")
+                # Save checkpoint.
+                checkpoint_path = os.path.join(args.checkpoint_dir, f"basic_net_sw{epoch}.pth")
+                torch.save(model.state_dict(), checkpoint_path)
+    finally:
+        cleanup()
 
 
 # ====================================================================
