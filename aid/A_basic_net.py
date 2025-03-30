@@ -123,7 +123,7 @@ class BasicDenoisingNetwork(nn.Module):
 if __name__ == "__main__":
     import torch
     import torchinfo
-    from 0_basic_net import BasicDenoisingNetwork
+    from A_basic_net import BasicDenoisingNetwork
     batch_size = 4
     audio_length = 16000  
     num_frames = 83     

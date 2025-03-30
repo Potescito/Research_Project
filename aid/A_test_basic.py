@@ -15,7 +15,7 @@ from torch.utils.data import DataLoader
 from src.utils import save_waveforms, save_videos
 from src.AVDataset import AVDataset
 from src.transforms import TemporalWindowTransform, ContextualSamplingTransform
-from aid.basic_net import BasicDenoisingNetwork
+from aid.A_basic_net import BasicDenoisingNetwork
 
 
 def test_model(model, test_loader, device, output_dir="../data/test_outputs/basic_net"):

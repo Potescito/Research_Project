@@ -88,8 +88,8 @@ if __name__ == "__main__":
     import torch
     import torch.nn as nn
     import torch.optim as optim
-    from aid.0_train_basic import train_model
-    from aid.basic_net import BasicDenoisingNetwork
+    from aid.A_train_basic import train_model
+    from aid.A_basic_net import BasicDenoisingNetwork
     from torch.utils.data import DataLoader
     from src.AVDataset import AVDataset
     from src.transforms import TemporalWindowTransform, ContextualSamplingTransform
