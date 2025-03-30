@@ -13,6 +13,7 @@ import argparse
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from torch.utils.tensorboard import SummaryWriter
 import torch.distributed as dist
 import torch.multiprocessing as mp
 from torch.utils.data import DataLoader, DistributedSampler
@@ -31,28 +32,53 @@ def setup(rank, world_size):
 def cleanup():
     dist.destroy_process_group()
 
-def train_one_epoch(model, dataloader, criterion, optimizer, device):
+def train_one_epoch(model, dataloader, criterion, optimizer, device): # sequential
     model.train()
     running_loss = 0.0
-    scaler = torch.amp.GradScaler(device=device)
+    
+    # scaler = torch.amp.GradScaler(device=device)
     for waveforms, frames, _, _ in dataloader:
-        waveforms = waveforms.to(device)  # (B, num_windows, window_audio)
-        frames = frames.to(device) #  (B, num_windows, window_video, 1, H, W)
-        # optimizer.zero_grad()
-        for param in model.parameters():
-            param.grad = None
+        # print("Batch shapes:", waveforms.shape, frames.shape)
 
-        # Fwd
-        with torch.amp.autocast(device_type="cuda"):
-            outputs = model(waveforms, frames) #  (B, num_windows, window_video, 1, H, W)
-            loss = criterion(outputs, frames) # I know it's wrong :(
-        scaler.scale(loss).backward()
-        scaler.step(optimizer) #.step()
-        running_loss += loss.item() * waveforms.size(0) # MSE or L1, its an avg 
-        scaler.update()
+        optimizer.zero_grad()
+        # for param in model.parameters():
+        #     param.grad = None
+
+        win_loss = 0.0 # ill accumulate loss over the windows
+        num_windows = min(waveforms.shape[1], frames.shape[1]) # num of windows / some will be sadly left
+        for i in range(num_windows): # over windows individually 
+            waveforms_i = waveforms[:, i, :]
+            waveforms_i = waveforms_i.unsqueeze(1) # (B, 1, window_audio)
+
+            frames_i = frames[:, i, ...]
+            frames_i = frames_i.unsqueeze(1) # (B, 1, window_video, 1, H, W)
+
+            waveforms_i = waveforms_i.to(device) 
+            frames_i = frames_i.to(device)
+
+            # Fwd
+            outputs_i = model(waveforms_i, frames_i) #  (B, num_windows, window_video, 1, H, W) -> should process a single window 
+            loss_i = criterion(outputs_i, frames_i) # I know it's wrong :(
+
+            win_loss += loss_i
+
+            loss_i.backward()
+        
+        win_loss /= num_windows # num of windows
+
+        optimizer.step()
+        
+        running_loss += win_loss.item() * waveforms.size(0) # MSE or L1, its an avg 
+        # with torch.amp.autocast(device_type="cuda"):
+        #     outputs = model(waveforms, frames) #  (B, num_windows, window_video, 1, H, W)
+        #     loss = criterion(outputs, frames) # I know it's wrong :(
+        # scaler.scale(loss).backward()
+        # scaler.step(optimizer) #.step()
+        # running_loss += loss.item() * waveforms.size(0) # MSE or L1, its an avg 
+        # scaler.update()
     return running_loss / len(dataloader.dataset) # true avg, not avg of avgs
 
-def validate_one_epoch(model, dataloader, criterion, device):
+def validate_one_epoch(model, dataloader, criterion, device): # if memory permits I want to process here the entire batch at once
     model.eval()
     running_loss = 0.0
     with torch.no_grad():
@@ -67,7 +93,8 @@ def validate_one_epoch(model, dataloader, criterion, device):
 def train(rank, world_size, args): # ranks are unique ids assigned to each process 0,1..gpus-1
     setup(rank, world_size) # world_size as 4 I assume single node this is so confusing
     device = torch.device(f"cuda:{rank}")
-    
+    writer = SummaryWriter(args.log_dir)
+
     # Create dataset and transform instances.
     dataset_t = AVDataset(
         audio_root=args.audio_root,
@@ -104,9 +131,11 @@ def train(rank, world_size, args): # ranks are unique ids assigned to each proce
                             collate_fn=lambda batch: AVDataset.collate(batch, sw_transform))
     
     # Initialize the network.
+    window_audio = int(args.sw_window_duration*args.audio_sampling_rate)
+    window_video = int(args.sw_window_duration*args.video_fps)
     model = BasicDenoisingNetworkSlidingVideo(base_channels=args.base_channels,
-                                                window_audio=args.window_audio,
-                                                window_video=args.window_video).to(device)
+                                                window_audio=window_audio,
+                                                window_video=window_video).to(device)
     model = DDP(model, device_ids=[rank])
     
     criterion = nn.L1Loss()
@@ -114,22 +143,25 @@ def train(rank, world_size, args): # ranks are unique ids assigned to each proce
     scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=args.lr_step, gamma=args.lr_gamma)
     
     num_epochs = args.epochs
+    best_val_loss = float('inf')
     try:
         for epoch in range(1, num_epochs + 1):
-            if rank == 0:
-                print("hola")
             train_sampler.set_epoch(epoch)
             epoch_start = time.time()
             train_loss = train_one_epoch(model, train_loader, criterion, optimizer, device)
             val_loss = validate_one_epoch(model, val_loader, criterion, device)
             scheduler.step()
-            
+
             if rank == 0:
                 print(f"Epoch {epoch}/{num_epochs} - Time: {time.time() - epoch_start:.2f}s "
                     f"Train Loss: {train_loss:.4f} Val Loss: {val_loss:.4f}")
-                # Save checkpoint.
-                checkpoint_path = os.path.join(args.checkpoint_dir, f"basic_net_sw{epoch}.pth")
-                torch.save(model.state_dict(), checkpoint_path)
+                
+                writer.add_scalar('Loss/Train', train_loss, epoch)
+                writer.add_scalar('Loss/Validation', val_loss, epoch)
+
+                if val_loss < best_val_loss:
+                    checkpoint_path = os.path.join(args.checkpoint_dir, f"basic_net_sw{epoch}.pth")
+                    torch.save(model.state_dict(), checkpoint_path)
     finally:
         cleanup()
 
@@ -146,7 +178,7 @@ def main():
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--epochs", type=int, default=50)
-    parser.add_argument("--batch_size", type=int, default=2, help="Batch size per GPU")
+    parser.add_argument("--batch_size", type=int, default=4, help="Batch size per GPU")
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--lr_step", type=int, default=10)
     parser.add_argument("--lr_gamma", type=float, default=0.5)
@@ -159,18 +191,15 @@ def main():
     parser.add_argument("--video_max_frames", type=int, default=None)
     parser.add_argument("--audio_sampling_rate", type=int, default=16000)
     parser.add_argument("--frame_skip", type=int, default=1)
-    # Sliding window parameters for collate.
     parser.add_argument("--sw_window_duration", type=float, default=4.0, help="Sliding window duration in seconds")
     parser.add_argument("--sw_step_duration", type=float, default=4.0, help="Sliding window step in seconds")
     parser.add_argument("--video_fps", type=int, default=83)
-    # Expected window lengths (should match sw_window_duration * sampling rate/fps)
-    parser.add_argument("--window_audio", type=int, default=64000)
-    parser.add_argument("--window_video", type=int, default=332)
     parser.add_argument("--checkpoint_dir", type=str, default="checkpoints/basic_net_sw")
+    parser.add_argument("--log_dir", type=str, default="runs/basic_net_sw")
     args = parser.parse_args()
     
     os.makedirs(args.checkpoint_dir, exist_ok=True)
-    world_size = 1  # Number of GPUs available.
+    world_size = 4  # Number of GPUs available.
     mp.spawn(train, args=(world_size, args), nprocs=world_size, join=True) # supposedly launches a process per GPU.
 
 if __name__ == "__main__":

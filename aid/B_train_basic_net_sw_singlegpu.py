@@ -25,14 +25,14 @@ def train_one_epoch(model, dataloader, criterion, optimizer, device): # sequenti
     
     # scaler = torch.amp.GradScaler(device=device)
     for waveforms, frames, _, _ in dataloader:
-        print("Batch shapes:", waveforms.shape, frames.shape)
+        # print("Batch shapes:", waveforms.shape, frames.shape)
 
         optimizer.zero_grad()
         # for param in model.parameters():
         #     param.grad = None
 
         win_loss = 0.0 # ill accumulate loss over the windows
-        num_windows = waveforms.shape[1] # num of windows
+        num_windows = min(waveforms.shape[1], frames.shape[1]) # num of windows / some will be sadly left
         for i in range(num_windows): # over windows individually 
             waveforms_i = waveforms[:, i, :]
             waveforms_i = waveforms_i.unsqueeze(1) # (B, 1, window_audio)
@@ -157,7 +157,7 @@ def main():
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--epochs", type=int, default=50)
-    parser.add_argument("--batch_size", type=int, default=2, help="Batch size per GPU")
+    parser.add_argument("--batch_size", type=int, default=4, help="Batch size per GPU")
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--lr_step", type=int, default=10)
     parser.add_argument("--lr_gamma", type=float, default=0.5)
@@ -170,11 +170,11 @@ def main():
     parser.add_argument("--video_max_frames", type=int, default=None)
     parser.add_argument("--audio_sampling_rate", type=int, default=16000)
     parser.add_argument("--frame_skip", type=int, default=1)
-    parser.add_argument("--sw_window_duration", type=float, default=1.0, help="Sliding window duration in seconds")
-    parser.add_argument("--sw_step_duration", type=float, default=1.0, help="Sliding window step in seconds")
+    parser.add_argument("--sw_window_duration", type=float, default=4.0, help="Sliding window duration in seconds")
+    parser.add_argument("--sw_step_duration", type=float, default=4.0, help="Sliding window step in seconds")
     parser.add_argument("--video_fps", type=int, default=83)
-    parser.add_argument("--checkpoint_dir", type=str, default="checkpoints/basic_net_sw")
-    parser.add_argument("--log_dir", type=str, default="runs/basic_net_sw")
+    parser.add_argument("--checkpoint_dir", type=str, default="checkpoints/basic_net_sw_single")
+    parser.add_argument("--log_dir", type=str, default="runs/basic_net_sw_single")
     args = parser.parse_args()
     
     os.makedirs(args.checkpoint_dir, exist_ok=True)
