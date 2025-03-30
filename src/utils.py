@@ -61,7 +61,7 @@ def save_waveforms(waveforms, names, output_dir='waveforms', sample_rate=16000):
         else:
             waveform_to_save = waveform
         
-        name = names[i].split("/")[-1].split(".")[0]
+        name = names[i].split("/")[-1].split("\\")[-1].split(".")[0]
 
         file_path = os.path.join(output_dir, f'{name}.wav')
         waveform_tensor = torch.tensor(waveform_to_save, dtype=torch.float32)
@@ -85,7 +85,7 @@ def save_videos(videos, names, output_dir='videos', fps=83, codec='mp4v'):
         videos = videos.cpu().numpy()
     
     batch_size = videos.shape[0]
-    
+
     for i in range(batch_size):
         video = videos[i]  # shape: (frames, 1, height, width)
         video = np.squeeze(video, axis=1)  # now shape: (frames, height, width)
@@ -94,13 +94,13 @@ def save_videos(videos, names, output_dir='videos', fps=83, codec='mp4v'):
         # Determine height and width from the first frame.
         height, width = video_uint8[0].shape
         
-        name = names[i].split("/")[-1].split(".")[0]
+        name = names[i].split("/")[-1].split("\\")[-1].split(".")[0]
 
         output_path = os.path.join(output_dir, f'{name}.mp4')
         fourcc = cv2.VideoWriter_fourcc(*codec)
         # Create VideoWriter. If your codec struggles with grayscale, you could convert frames to BGR.
         out = cv2.VideoWriter(output_path, fourcc, fps, (width, height), isColor=False)
-        
+        print(output_path)
         for frame in video_uint8:
             out.write(frame)
         out.release()

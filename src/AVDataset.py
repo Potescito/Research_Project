@@ -129,7 +129,7 @@ if __name__ == "__main__":
     audio_root = r"../data/audios_denoised_16khz"
     video_root = r"../data/dataset_2drt_video_only"
     
-    nSubs = [f"sub{str(i).zfill(3)}" for i in range(1, 3)]
+    nSubs = [f"sub{str(i).zfill(3)}" for i in range(1, 2)]
 
     dataset = AVDataset(audio_root=audio_root, 
                         video_root=video_root, 
@@ -141,7 +141,7 @@ if __name__ == "__main__":
                         frame_skip=1)
     print("Number of pairs:", len(dataset))
 
-    dataloader = DataLoader(dataset, batch_size=5, shuffle=False, collate_fn=AVDataset.collate) # Batch / Collation
+    dataloader = DataLoader(dataset, batch_size=1, shuffle=False, collate_fn=AVDataset.collate) # Batch / Collation
     for (waveform, frames, audio_path, video_path) in dataloader:
         print(waveform.shape, frames.shape, audio_path, video_path)
         break

@@ -130,6 +130,7 @@ data/sub001/
 data/MRI_Span_Audios_Denoised_16kHz_Full.zip
 data/audios_denoised_16khz/
 data/debug0/
+data/test_outputs/
 
 #
 examples/Metrics/denoised*
