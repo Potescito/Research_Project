@@ -78,11 +78,12 @@ def train_one_epoch(model, dataloader, criterion, optimizer, device): # sequenti
         # scaler.update()
     return running_loss / len(dataloader.dataset) # true avg, not avg of avgs
 
-def validate_one_epoch(model, dataloader, criterion, device): # if memory permits I want to process here the entire batch at once
+def validate_one_epoch(model, dataloader, criterion, device): # if memory permits I want to process here the entire batch at once -> it doesnt
     model.eval()
     running_loss = 0.0
     with torch.no_grad():
         for waveforms, frames, _, _ in dataloader:
+            
             waveforms = waveforms.to(device)
             frames = frames.to(device)
             outputs = model(waveforms, frames)
@@ -178,7 +179,7 @@ def main():
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--epochs", type=int, default=50)
-    parser.add_argument("--batch_size", type=int, default=4, help="Batch size per GPU")
+    parser.add_argument("--batch_size", type=int, default=2, help="Batch size per GPU")
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--lr_step", type=int, default=10)
     parser.add_argument("--lr_gamma", type=float, default=0.5)
