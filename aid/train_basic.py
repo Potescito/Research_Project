@@ -92,6 +92,7 @@ if __name__ == "__main__":
     from src.AVDataset import AVDataset
     from src.transforms import TemporalWindowTransform, ContextualSamplingTransform
 
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     audio_root = r"../data/audios_denoised_16khz"
     video_root = r"../data/dataset_2drt_video_only"
     keyword = "vcv"
@@ -102,13 +103,11 @@ if __name__ == "__main__":
     temporal_transform = TemporalWindowTransform(window_size_sec=1, audio_sample_rate=16000, video_fps=83)
     contextual_transform = ContextualSamplingTransform(context_size=1, audio_sample_rate=16000, video_fps=83)
 
-    train_dataset = AVDataset(audio_root, video_root, subs=nSubst, keyword=keyword, transform=temporal_transform)
-    val_dataset = AVDataset(audio_root, video_root, subs=nSubsv, keyword=keyword, transform=temporal_transform)
+    train_dataset = AVDataset(audio_root, video_root, subs=nSubst, filter_keyword=keyword, transform=temporal_transform)
+    val_dataset = AVDataset(audio_root, video_root, subs=nSubsv, filter_keyword=keyword, transform=temporal_transform)
    
     train_loader = DataLoader(train_dataset, batch_size=4, shuffle=True, collate_fn=AVDataset.collate)
     val_loader = DataLoader(val_dataset, batch_size=4, shuffle=False, collate_fn=AVDataset.collate)
-    
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
     model = BasicDenoisingNetwork(base_channels=32).to(device)
     
