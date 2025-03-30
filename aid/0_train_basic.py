@@ -57,12 +57,12 @@ def train_model(model,
     os.makedirs(checkpoint_dir, exist_ok=True)
     
     best_val_loss = float('inf')
-    
+    print("Training...")
     for epoch in range(1, num_epochs + 1):
         start_time = time.time()
         train_loss = train_one_epoch(model, train_loader, criterion, optimizer, device)
         val_loss = validate_one_epoch(model, val_loader, criterion, device)
-        
+        print("..")
         scheduler.step()  # Update learning rate as per scheduler
         
         epoch_time = time.time() - start_time
@@ -80,19 +80,22 @@ def train_model(model,
     
     writer.close()
 
+# %%
 if __name__ == "__main__":
     import sys
     sys.path.append('../')
 
+    import torch
     import torch.nn as nn
     import torch.optim as optim
-    from train_basic import train_model
-    from basic_net import BasicDenoisingNetwork
+    from aid.0_train_basic import train_model
+    from aid.basic_net import BasicDenoisingNetwork
     from torch.utils.data import DataLoader
     from src.AVDataset import AVDataset
     from src.transforms import TemporalWindowTransform, ContextualSamplingTransform
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(device)
     audio_root = r"../data/audios_denoised_16khz"
     video_root = r"../data/dataset_2drt_video_only"
     keyword = "vcv"
@@ -105,10 +108,12 @@ if __name__ == "__main__":
 
     train_dataset = AVDataset(audio_root, video_root, subs=nSubst, filter_keyword=keyword, transform=temporal_transform)
     val_dataset = AVDataset(audio_root, video_root, subs=nSubsv, filter_keyword=keyword, transform=temporal_transform)
-   
+
     train_loader = DataLoader(train_dataset, batch_size=4, shuffle=True, collate_fn=AVDataset.collate)
     val_loader = DataLoader(val_dataset, batch_size=4, shuffle=False, collate_fn=AVDataset.collate)
-    
+    print(f"Train dataset size: {len(train_dataset)}")
+    print(f"Validation dataset size: {len(val_dataset)}")
+
     model = BasicDenoisingNetwork(base_channels=32).to(device)
     
     criterion = nn.L1Loss()
@@ -118,3 +123,4 @@ if __name__ == "__main__":
     num_epochs = 50
     
     train_model(model, train_loader, val_loader, num_epochs, optimizer, scheduler, criterion, device)
+# %%
