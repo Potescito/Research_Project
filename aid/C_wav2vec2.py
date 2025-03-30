@@ -42,7 +42,7 @@ if __name__ == "__main__":
     sys.path.append('../')
     from transformers import Wav2Vec2Processor, Wav2Vec2Model
     import torch
-    from aid.B_wav2vec2 import extract_audio_features
+    from aid.C_wav2vec2 import extract_audio_features
     from torch.utils.data import DataLoader
     from src.AVDataset import AVDataset
     from src.transforms import TemporalWindowTransform, ContextualSamplingTransform

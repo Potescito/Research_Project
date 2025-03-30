@@ -8,6 +8,82 @@ Research Project WiSe 2024/25
 import numpy as np
 import torch
 
+class SlidingWindowTransform:
+    """
+    Applies a fixed sliding window with overlap to both audio and video data.
+    Always starts from the beginning and traverses the entire sequence.
+
+    Args:
+        window_duration (float): Duration of each window in seconds.
+        step_duration (float): Step size (in seconds) between windows.
+        audio_sample_rate (int): Audio sample rate (default: 16000).
+        video_fps (int): Video frame rate (default: 83).
+    """
+    def __init__(self, window_duration, step_duration, audio_sample_rate=16000, video_fps=83):
+        self.window_duration = window_duration
+        self.step_duration = step_duration
+        self.audio_sample_rate = audio_sample_rate
+        self.video_fps = video_fps
+        
+        self.window_audio = int(window_duration * audio_sample_rate)
+        self.step_audio   = int(step_duration * audio_sample_rate)
+        self.window_video = int(window_duration * video_fps)
+        self.step_video   = int(step_duration * video_fps)
+        
+    def __call__(self, waveform, frames):
+        """
+        Args:
+            waveform (torch.Tensor): Audio tensor of shape (batch, num_samples).
+            frames (torch.Tensor): Video tensor of shape (batch, num_frames, 1, H, W).
+
+        Returns:
+            tuple: (audio_windows, video_windows) where:
+                - audio_windows has shape (batch, num_windows, window_audio)
+                - video_windows has shape (batch, num_windows, window_video, 1, H, W)
+        """
+        # Apply sliding window using unfold.
+        audio_windows = waveform.unfold(dimension=1, size=self.window_audio, step=self.step_audio)
+        video_windows = frames.unfold(dimension=1, size=self.window_video, step=self.step_video)
+        video_windows = video_windows.permute(0, 1, 5, 2, 3, 4)
+        return audio_windows, video_windows
+
+    def overlap_add(self, video_windows, window_duration=None, step_duration=None):
+        """
+        Reconstructs a full video from overlapping window outputs using overlap-add.
+        
+        Args:
+            video_windows (torch.Tensor):  (batch, num_windows, window_video, 1, H, W)
+            window_duration (float): Duration of each window in seconds. Defaults to class.
+            step_duration (float): Step size (in seconds) between windows. Defaults to class.
+            
+        Returns:
+            torch.Tensor: Reconstructed video of shape (B, final_length, 1, H, W), 
+                          where final_length = (num_windows - 1) * step_video + window_video.
+        """
+        if window_duration is None:
+            window_duration = self.window_duration
+        if step_duration is None:
+            step_duration = self.step_duration
+
+        B, num_windows, _, C, H, W = video_windows.shape
+        final_length = (num_windows - 1) * step_duration + window_duration
+        
+        final_video = torch.zeros(B, final_length, C, H, W, device=video_windows.device)
+        count = torch.zeros(B, final_length, 1, H, W, device=video_windows.device)
+        
+        for i in range(num_windows):
+            start = i * step_duration
+            end = start + window_duration
+            final_video[:, start:end] += video_windows[:, i]
+            count[:, start:end] += 1
+            
+        # Average the overlapping regions.
+        final_video = final_video / count
+        return final_video
+
+# ====================================================================
+# ====================================================================
+
 class TemporalWindowTransform:
     """
     Extracts a fixed-length temporal window from audio and video.
@@ -59,6 +135,9 @@ class TemporalWindowTransform:
         
         return windowed_waveform, windowed_frames
 
+
+# ====================================================================
+# ====================================================================
 
 class ContextualSamplingTransform:
     """

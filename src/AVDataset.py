@@ -200,4 +200,33 @@ if __name__ == "__main__":
         print(waveform.shape, frames.shape, audio_path, video_path)
         break
 
+# %% Debugging Sliding Window
+if __name__ == "__main__":
+    from AVDataset import AVDataset
+    from torch.utils.data import DataLoader
+    from transforms import SlidingWindowTransform
+    audio_root = r"../data/audios_denoised_16khz"
+    video_root = r"../data/dataset_2drt_video_only"
+    
+    nSubs = [f"sub{str(i).zfill(3)}" for i in range(1, 3)]
+
+    sw_transform = SlidingWindowTransform(window_duration=4, step_duration=4, audio_sample_rate=16000, video_fps=83)
+
+    dataset = AVDataset(audio_root=audio_root, 
+                        video_root=video_root, 
+                        subs=nSubs, 
+                        filter_keyword="vcv",
+                        transform=None,
+                        video_max_frames=None,
+                        audio_sampling_rate=16000,
+                        frame_skip=1)
+    print("Number of pairs:", len(dataset))
+
+    dataloader = DataLoader(dataset, batch_size=5, shuffle=False, collate_fn=AVDataset.collate) # Batch / Collation
+    for (waveform, frames, audio_path, video_path) in dataloader:
+        print(waveform.shape, frames.shape, audio_path, video_path)
+        padded_waveforms, padded_frames = sw_transform(waveform, frames)
+        print(padded_waveforms.shape, padded_frames.shape, audio_path, video_path)
+        print("")
+
 # %%
