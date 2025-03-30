@@ -105,7 +105,7 @@ class AVDataset(Dataset):
         return waveform, frames, audio_path, video_path
 
     @staticmethod
-    def collate(batch):
+    def collate(batch, sw_transform=None):
         waveforms, frames, audio_paths, video_paths = zip(*batch)
 
         max_audio_length = max([waveform.size(0) for waveform in waveforms])
@@ -120,6 +120,9 @@ class AVDataset(Dataset):
                 frame = torch.cat((frame, padding), dim=0)
             f.append(frame)
         padded_frames = torch.stack(f)
+
+        if sw_transform is not None:
+            padded_waveforms, padded_frames = sw_transform(padded_waveforms, padded_frames)
         return padded_waveforms, padded_frames, audio_paths, video_paths
 
 # %% Debugging Batching and Collate
@@ -228,5 +231,11 @@ if __name__ == "__main__":
         padded_waveforms, padded_frames = sw_transform(waveform, frames)
         print(padded_waveforms.shape, padded_frames.shape, audio_path, video_path)
         print("")
-
+    
+    print("inside collate")
+    dataloader = DataLoader(dataset, batch_size=5, shuffle=False, 
+                            collate_fn=lambda batch: AVDataset.collate(batch, sw_transform)) # Batch / Collation
+    for (waveform, frames, audio_path, video_path) in dataloader:
+        print(waveform.shape, frames.shape, audio_path, video_path)
+        print("")
 # %%
