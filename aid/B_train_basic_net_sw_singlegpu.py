@@ -25,26 +25,33 @@ def train_one_epoch(model, dataloader, criterion, optimizer, device): # sequenti
     
     # scaler = torch.amp.GradScaler(device=device)
     for waveforms, frames, _, _ in dataloader:
-        print(waveforms.shape, frames.shape)
+        print("Batch shapes:", waveforms.shape, frames.shape)
 
-        # optimizer.zero_grad()
-        for param in model.parameters():
-            param.grad = None
+        optimizer.zero_grad()
+        # for param in model.parameters():
+        #     param.grad = None
 
-        win_loss = 0.0
-        for i in range(waveforms.shape[1]): # over windows 
-            waveforms_i = waveforms[:, i, :].to(device)  # (B, 1, window_audio)
-            frames_i = frames[:, i, ...].to(device) #  (B, 1, window_video, 1, H, W)
+        win_loss = 0.0 # ill accumulate loss over the windows
+        num_windows = waveforms.shape[1] # num of windows
+        for i in range(num_windows): # over windows individually 
+            waveforms_i = waveforms[:, i, :]
+            waveforms_i = waveforms_i.unsqueeze(1) # (B, 1, window_audio)
+
+            frames_i = frames[:, i, ...]
+            frames_i = frames_i.unsqueeze(1) # (B, 1, window_video, 1, H, W)
+
+            waveforms_i = waveforms_i.to(device) 
+            frames_i = frames_i.to(device)
 
             # Fwd
-            outputs_i = model(waveforms_i, frames_i) #  (B, num_windows, window_video, 1, H, W)
+            outputs_i = model(waveforms_i, frames_i) #  (B, num_windows, window_video, 1, H, W) -> should process a single window 
             loss_i = criterion(outputs_i, frames_i) # I know it's wrong :(
 
             win_loss += loss_i
 
             loss_i.backward()
         
-        win_loss /= waveforms.shape[1] # num of windows
+        win_loss /= num_windows # num of windows
 
         optimizer.step()
         
@@ -63,7 +70,7 @@ def validate_one_epoch(model, dataloader, criterion, device):
     model.eval()
     running_loss = 0.0
     with torch.no_grad():
-        for waveforms, frames, _, _ in dataloader:
+        for waveforms, frames, _, _ in dataloader: # if memory permits I want to process here the entire batch at once
             waveforms = waveforms.to(device)
             frames = frames.to(device)
             outputs = model(waveforms, frames)
