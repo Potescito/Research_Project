@@ -69,7 +69,6 @@ def train_one_epoch(model, dataloader, criterion, optimizer, device): # sequenti
 def validate_one_epoch(model, dataloader, criterion, device): # if memory permits I want to process here the entire batch at once -> it doesnt
     model.eval()
     running_loss = 0.0
-    total_samples = 0
     with torch.no_grad():
         for waveforms, frames, _, _ in dataloader:
             num_windows = min(waveforms.shape[1], frames.shape[1])
