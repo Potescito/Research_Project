@@ -81,20 +81,37 @@ def train_one_epoch(model, dataloader, criterion, optimizer, device): # sequenti
 def validate_one_epoch(model, dataloader, criterion, device): # if memory permits I want to process here the entire batch at once -> it doesnt
     model.eval()
     running_loss = 0.0
+    total_samples = 0
     with torch.no_grad():
         for waveforms, frames, _, _ in dataloader:
+            num_windows = min(waveforms.shape[1], frames.shape[1])
+            win_loss = 0.0
             
-            waveforms = waveforms.to(device)
-            frames = frames.to(device)
-            outputs = model(waveforms, frames)
-            loss = criterion(outputs, frames)
-            running_loss += loss.item() * waveforms.size(0)
+            for i in range(num_windows):
+                waveforms_i = waveforms[:, i, :]
+                waveforms_i = waveforms_i.unsqueeze(1) # (B, 1, window_audio)
+
+                frames_i = frames[:, i, ...]
+                frames_i = frames_i.unsqueeze(1) # (B, 1, window_video, 1, H, W)
+
+                waveforms_i = waveforms_i.to(device) 
+                frames_i = frames_i.to(device)
+                
+                outputs_i = model(waveforms_i, frames_i)
+                loss_i = criterion(outputs_i, frames_i)
+                
+                win_loss += loss_i
+            
+            win_loss /= num_windows
+            running_loss += win_loss.item() * waveforms.size(0)
     return running_loss / len(dataloader.dataset)
+
 
 def train(rank, world_size, args): # ranks are unique ids assigned to each process 0,1..gpus-1
     setup(rank, world_size) # world_size as 4 I assume single node this is so confusing
     device = torch.device(f"cuda:{rank}")
-    writer = SummaryWriter(args.log_dir)
+    if rank == 0:
+        writer = SummaryWriter(args.log_dir)
 
     # Create dataset and transform instances.
     dataset_t = AVDataset(
@@ -179,7 +196,7 @@ def main():
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--epochs", type=int, default=50)
-    parser.add_argument("--batch_size", type=int, default=2, help="Batch size per GPU")
+    parser.add_argument("--batch_size", type=int, default=4, help="Batch size per GPU")
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--lr_step", type=int, default=10)
     parser.add_argument("--lr_gamma", type=float, default=0.5)

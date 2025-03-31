@@ -66,16 +66,32 @@ def train_one_epoch(model, dataloader, criterion, optimizer, device): # sequenti
     return running_loss / len(dataloader.dataset) # true avg, not avg of avgs
 
 
-def validate_one_epoch(model, dataloader, criterion, device):
+def validate_one_epoch(model, dataloader, criterion, device): # if memory permits I want to process here the entire batch at once -> it doesnt
     model.eval()
     running_loss = 0.0
+    total_samples = 0
     with torch.no_grad():
-        for waveforms, frames, _, _ in dataloader: # if memory permits I want to process here the entire batch at once
-            waveforms = waveforms.to(device)
-            frames = frames.to(device)
-            outputs = model(waveforms, frames)
-            loss = criterion(outputs, frames)
-            running_loss += loss.item() * waveforms.size(0)
+        for waveforms, frames, _, _ in dataloader:
+            num_windows = min(waveforms.shape[1], frames.shape[1])
+            win_loss = 0.0
+            
+            for i in range(num_windows):
+                waveforms_i = waveforms[:, i, :]
+                waveforms_i = waveforms_i.unsqueeze(1) # (B, 1, window_audio)
+
+                frames_i = frames[:, i, ...]
+                frames_i = frames_i.unsqueeze(1) # (B, 1, window_video, 1, H, W)
+
+                waveforms_i = waveforms_i.to(device) 
+                frames_i = frames_i.to(device)
+                
+                outputs_i = model(waveforms_i, frames_i)
+                loss_i = criterion(outputs_i, frames_i)
+                
+                win_loss += loss_i
+            
+            win_loss /= num_windows
+            running_loss += win_loss.item() * waveforms.size(0)
     return running_loss / len(dataloader.dataset)
 
 
