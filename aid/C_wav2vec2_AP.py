@@ -89,8 +89,10 @@ if __name__ == "__main__":
         print(frames.shape)
         print(audio_paths)
         print(video_paths)
-        feats = Amodel(waveform[:,0,:]) # tesk only with the first window
-        print(feats.shape)
+        feats = Amodel(waveform[:,0,:].to(device)) # tesk only with the first window
+        print(waveform[:,0,:].shape, feats.shape)
+        # feats = Amodel(waveform[:,0,:].unsqueeze(1)) # NOOOOO
+        # print(waveform[:,0,:].unsqueeze(1).shape, feats.shape)
 """
 cpu
 12 3
