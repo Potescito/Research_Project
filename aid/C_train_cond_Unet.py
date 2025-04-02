@@ -29,40 +29,37 @@ def train_one_epoch(model, audio_extractor, dataloader, criterion, optimizer, de
     for waveforms, video_windows, _, _ in dataloader:
         # waveforms: (B, num_windows, window_audio)
         # video_windows: (B, num_windows, window_video, 1, H, W)
-        B, num_windows = waveforms.shape[0], waveforms.shape[1]
         optimizer.zero_grad() # iterative as suggested by pytorch maybe?
         batch_loss = 0.0
+
+        num_windows = min(waveforms.shape[1], video_windows.shape[1])
 
         for i in range(num_windows):
             wave_i = waveforms[:, i, :]    # (B, window_audio)
             vid_i = video_windows[:, i, ...]  # shape: (B, window_video, 1, H, W)
 
-            # Move to device.
+            # Move to device but maybe I can save one move here !
             wave_i = wave_i.to(device)
             vid_i = vid_i.to(device)
             
-            # Compute audio condition:
-            # Audio extractor returns (B, window_video, feature_dim).
-            audio_feats = audio_extractor(wave_i)  
-            # Average over the time dimension (window_video) to get (B, cond_dim).
-            cond = audio_feats.mean(dim=1)
+            # Audio  feat / condition
+            audio_feats = audio_extractor(wave_i)  # (B, window_video, feature_dim)
+            cond = audio_feats.mean(dim=1) # (B, cond_dim).
             
-            # Prepare video input for the U-Net:
-            # Conditional U-Net expects video input shape (B, 1, T, H, W).
-            # Our vid_i is (B, window_video, 1, H, W); we need to permute the dimensions.
-            vid_input = vid_i.permute(0, 2, 1, 3, 4)  # becomes (B, 1, window_video, H, W)
+            # Prepare video input for the UNet --> expects video input shape (B, 1, T, H, W)
+            vid_input = vid_i.permute(0, 2, 1, 3, 4)  # becomes B, 1, window_video, H, W
             
-            # Forward pass through the conditional U-Net.
+            # Fwd -> autocast for mixed precision (deprecated??)
             with torch.cuda.amp.autocast():
                 output = model(vid_input, cond)  # Expected output shape: (B, 1, window_video, H, W)
                 loss = criterion(output, vid_input)
             batch_loss += loss
             loss.backward()
 
-        # Average loss over windows.
+        # Avg loss over windows
         batch_loss /= num_windows
         optimizer.step()
-        running_loss += batch_loss.item() * B
+        running_loss += batch_loss.item() * waveforms.shape[0] # when using MSE or L1, it's an avg
 
     return running_loss / len(dataloader.dataset)
 
@@ -73,12 +70,10 @@ def validate_one_epoch(model, audio_extractor, dataloader, criterion, device):
     total_samples = 0
     with torch.no_grad():
         for waveforms, video_windows, _, _ in dataloader:
-            B, num_windows = waveforms.shape[0], waveforms.shape[1]
             batch_loss = 0.0
+            num_windows = min(waveforms.shape[1], video_windows.shape[1])
             for i in range(num_windows):
                 wave_i = waveforms[:, i, :]
-                if wave_i.dim() == 2:
-                    wave_i = wave_i.unsqueeze(1)
                 vid_i = video_windows[:, i, ...]
                 wave_i = wave_i.to(device)
                 vid_i = vid_i.to(device)
@@ -89,9 +84,9 @@ def validate_one_epoch(model, audio_extractor, dataloader, criterion, device):
                 loss = criterion(output, vid_input)
                 batch_loss += loss
             batch_loss /= num_windows
-            running_loss += batch_loss.item() * B
-            total_samples += B
-    return running_loss / total_samples
+            running_loss += batch_loss.item() * waveforms.shape[0]
+            total_samples += waveforms.shape[0]
+    return running_loss / total_samples # len(dataloader.dataset)
 
 
 # ====================================================================
@@ -107,7 +102,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--epochs", type=int, default=50)
     parser.add_argument("--batch_size", type=int, default=2, help="Batch size per GPU")
-    parser.add_argument("--lr", type=float, default=0.8e-3)
+    parser.add_argument("--lr", type=float, default=0.8e-3) # not 1e-3
     parser.add_argument("--lr_step", type=int, default=10) # after every 10 epochs the lr is updated by gamma * lr
     parser.add_argument("--lr_gamma", type=float, default=0.5)
     parser.add_argument("--base_channels", type=int, default=32)
@@ -127,8 +122,80 @@ def main():
     args = parser.parse_args()
     
     os.makedirs(args.checkpoint_dir, exist_ok=True)
+    writer = SummaryWriter(args.log_dir)
+
+    # ______________________________________________________________________________________
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(device)
+
+    window_audio = int(args.sw_window_duration * args.audio_sampling_rate)
+    window_video = int(args.sw_window_duration * args.video_fps)
+
+    # ______________________________________________________________________________________
+    sw_transform = SlidingWindowTransform(args.sw_window_duration, args.sw_step_duration,
+                                          args.audio_sampling_rate, args.video_fps)
     
-    train(args)
+    dataset_t = AVDataset(
+        audio_root=args.audio_root,
+        video_root=args.video_root,
+        subs=args.subs_t,
+        filter_keyword=args.filter_keyword,
+        transform=None,  # No extra transform raw data will be padded and then sliding window applied in collate
+        video_max_frames=args.video_max_frames,
+        audio_sampling_rate=args.audio_sampling_rate,
+        frame_skip=args.frame_skip
+    )
+
+    dataset_v = AVDataset(
+        audio_root=args.audio_root,
+        video_root=args.video_root,
+        subs=args.subs_v,
+        filter_keyword=args.filter_keyword,
+        transform=None,  # No extra transform raw data will be padded and then sliding window applied in collate
+        video_max_frames=args.video_max_frames,
+        audio_sampling_rate=args.audio_sampling_rate,
+        frame_skip=args.frame_skip
+    )
+
+    #_______________________________________________________________________________________
+    train_loader = DataLoader(dataset_t, batch_size=args.batch_size,
+                              collate_fn=lambda batch: AVDataset.collate(batch, sw_transform))
+    val_loader = DataLoader(dataset_v, batch_size=args.batch_size,
+                            collate_fn=lambda batch: AVDataset.collate(batch, sw_transform))
+    print("hola")
+    #______________________________________________________________________________________
+    audio_extractor = AudioFeatureExtractorFiLM(window_video=window_video, 
+                                                pretrained_model_name="facebook/wav2vec2-base-960h"
+                                                ).to(device) # cond_dim is set to the wav2vec2 hidden size, typically 768.
+    print("hola2")
+    #______________________________________________________________________________________
+    cond_dim = audio_extractor.feature_dim
+    model = ConditionalUNet3D_FiLM(cond_dim=cond_dim, base_channels=args.base_channels).to(device)
+
+    criterion = nn.L1Loss() # simple
+    optimizer = optim.Adam(list(model.parameters()) + list(audio_extractor.parameters()), lr=args.lr) # audio has a linear layer
+    scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=args.lr_step, gamma=args.lr_gamma) # after maybe 10
+
+    # ______________________________________________________________________________________
+    num_epochs = args.epochs
+    best_val_loss = float('inf')
+    print("Training Conditional U-Net with FiLM conditioning...")
+
+    for epoch in range(1, num_epochs + 1):
+        epoch_start = time.time()
+        train_loss = train_one_epoch(model, audio_extractor, train_loader, criterion, optimizer, device)
+        val_loss = validate_one_epoch(model, audio_extractor, val_loader, criterion, device)
+        scheduler.step()
+        
+        writer.add_scalar('Loss/Train', train_loss, epoch)
+        writer.add_scalar('Loss/Validation', val_loss, epoch)
+        
+        print(f"Epoch {epoch}/{num_epochs} - Time: {time.time()-epoch_start:.2f}s - Train Loss: {train_loss:.4f} - Val Loss: {val_loss:.4f}")
+        if val_loss < best_val_loss:
+            best_val_loss = val_loss
+            checkpoint_path = os.path.join(args.checkpoint_dir, f"cond_unet_film_epoch{epoch}.pth")
+            torch.save(model.state_dict(), checkpoint_path)
+    writer.close()
 
 if __name__ == "__main__":
     main()
