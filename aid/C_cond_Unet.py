@@ -172,13 +172,15 @@ if __name__ == "__main__":
     import torch
     import torchinfo
     from C_cond_Unet import ConditionalUNet3D_FiLM
+
+    device = "cuda" if torch.cuda.is_available() else "cpu"
     B = 2
     T, H, W = 332, 84, 84   
     cond_dim = 768 # remember it is an avg over time   
-    x = torch.randn(B, 1, T, H, W)
-    condition = torch.randn(B, cond_dim)
+    x = torch.randn(B, 1, T, H, W).to(device) # squeeze 3rd dim
+    condition = torch.randn(B, cond_dim).to(device)
     
-    model = ConditionalUNet3D_FiLM(cond_dim=cond_dim, base_channels=32)
+    model = ConditionalUNet3D_FiLM(cond_dim=cond_dim, base_channels=32).to(device)
     output = model(x, condition)
     print("Output shape:", output.shape)  # Expected: (B, 1, T, H, W)
 # %%
