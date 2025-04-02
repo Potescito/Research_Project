@@ -31,6 +31,7 @@ def test_model(model, test_loader, device, output_dir="../data/test_outputs/basi
             frames = frames.to(device)
             
             outputs = model(waveform, frames)
+            print(outputs)
             loss = criterion(outputs, frames)
             running_loss += loss.item() * waveform.size(0)
             recons = sw_transform.overlap_add(outputs)
@@ -61,7 +62,7 @@ model = BasicDenoisingNetworkSlidingVideo(base_channels=32,
                                             window_audio=window_audio,
                                             window_video=window_video).to(device)
 
-checkpoint_path = "checkpoints/basic_net_sw_single/basic_net_sw_single5.pth"
+checkpoint_path = "checkpoints/basic_net_sw_single/basic_net_sw_single1.pth"
 model.load_state_dict(torch.load(checkpoint_path, map_location=device))
 
 test_loss = test_model(model, test_loader, device)

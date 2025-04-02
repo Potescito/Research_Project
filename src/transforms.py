@@ -47,33 +47,33 @@ class SlidingWindowTransform:
         video_windows = video_windows.permute(0, 1, 5, 2, 3, 4)
         return audio_windows, video_windows
 
-    def overlap_add(self, video_windows, window_duration=None, step_duration=None):
+    def overlap_add(self, video_windows, window_video=None, step_video=None):
         """
         Reconstructs a full video from overlapping window outputs using overlap-add.
         
         Args:
             video_windows (torch.Tensor):  (batch, num_windows, window_video, 1, H, W)
-            window_duration (float): Duration of each window in seconds. Defaults to class.
-            step_duration (float): Step size (in seconds) between windows. Defaults to class.
+            window_video (int): Number of frames per window.
+            step_video (int): Step size (in frames) between consecutive windows.
             
         Returns:
             torch.Tensor: Reconstructed video of shape (B, final_length, 1, H, W), 
                           where final_length = (num_windows - 1) * step_video + window_video.
         """
-        if window_duration is None:
-            window_duration = self.window_duration
-        if step_duration is None:
-            step_duration = self.step_duration
+        if window_video is None:
+            window_video = self.window_video
+        if step_video is None:
+            step_video = self.step_video
 
         B, num_windows, _, C, H, W = video_windows.shape
-        final_length = (num_windows - 1) * step_duration + window_duration
-        
+        final_length = (num_windows - 1) * step_video + window_video
+
         final_video = torch.zeros(B, final_length, C, H, W, device=video_windows.device)
         count = torch.zeros(B, final_length, 1, H, W, device=video_windows.device)
         
         for i in range(num_windows):
-            start = i * step_duration
-            end = start + window_duration
+            start = i * step_video
+            end = start + window_video
             final_video[:, start:end] += video_windows[:, i]
             count[:, start:end] += 1
             

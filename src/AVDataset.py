@@ -213,7 +213,7 @@ if __name__ == "__main__":
     
     nSubs = [f"sub{str(i).zfill(3)}" for i in range(1, 3)]
 
-    sw_transform = SlidingWindowTransform(window_duration=4.5, step_duration=4, audio_sample_rate=16000, video_fps=83)
+    sw_transform = SlidingWindowTransform(window_duration=4, step_duration=4, audio_sample_rate=16000, video_fps=83)
 
     dataset = AVDataset(audio_root=audio_root, 
                         video_root=video_root, 
@@ -230,6 +230,8 @@ if __name__ == "__main__":
         print(waveform.shape, frames.shape, audio_path, video_path)
         padded_waveforms, padded_frames = sw_transform(waveform, frames)
         print(padded_waveforms.shape, padded_frames.shape, audio_path, video_path)
+        video_reconst = sw_transform.overlap_add(padded_frames)
+        print(video_reconst.shape)
         print("")
     
     print("inside collate")
@@ -237,5 +239,7 @@ if __name__ == "__main__":
                             collate_fn=lambda batch: AVDataset.collate(batch, sw_transform)) # Batch / Collation
     for (waveform, frames, audio_path, video_path) in dataloader:
         print(waveform.shape, frames.shape, audio_path, video_path)
+        video_reconst = sw_transform.overlap_add(padded_frames)
+        print(video_reconst.shape)
         print("")
 # %%
