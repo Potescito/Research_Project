@@ -27,9 +27,8 @@ def test_model(model, test_loader, device, output_dir="../data/test_outputs/basi
 
     with torch.no_grad():
         for batch_idx, (waveform, frames, audio_paths, video_paths) in enumerate(test_loader):
-            waveform = waveform.to(device)
-            frames = frames.to(device)
-            
+            waveform = waveform[:,0:2,...].to(device)
+            frames = frames[:,0:2,...].to(device)
             outputs = model(waveform, frames)
             print(outputs)
             loss = criterion(outputs, frames)
@@ -62,7 +61,7 @@ model = BasicDenoisingNetworkSlidingVideo(base_channels=32,
                                             window_audio=window_audio,
                                             window_video=window_video).to(device)
 
-checkpoint_path = "checkpoints/basic_net_sw_single/basic_net_sw_single1.pth"
+checkpoint_path = "checkpoints/basic_net_sw_single/basic_net_sw_single26.pth"
 model.load_state_dict(torch.load(checkpoint_path, map_location=device))
 
 test_loss = test_model(model, test_loader, device)
