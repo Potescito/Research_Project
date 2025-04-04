@@ -193,10 +193,10 @@ def main():
     nSubsv = [f"sub{str(i).zfill(3)}" for i in range(51, 75)]
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--epochs", type=int, default=50)
-    parser.add_argument("--batch_size", type=int, default=2, help="Batch size per GPU")
-    parser.add_argument("--lr", type=float, default=0.8e-3) # not 1e-3
-    parser.add_argument("--lr_step", type=int, default=10) # after every 10 epochs the lr is updated by gamma * lr
+    parser.add_argument("--epochs", type=int, default=100)
+    parser.add_argument("--batch_size", type=int, default=4, help="Batch size per GPU")
+    parser.add_argument("--lr", type=float, default=0.9e-3) # not 1e-3
+    parser.add_argument("--lr_step", type=int, default=5) # after every 10 epochs the lr is updated by gamma * lr
     parser.add_argument("--lr_gamma", type=float, default=0.5)
     parser.add_argument("--base_channels", type=int, default=32)
     parser.add_argument("--audio_root", type=str, default=audio_root)
@@ -207,11 +207,11 @@ def main():
     parser.add_argument("--video_max_frames", type=int, default=None)
     parser.add_argument("--audio_sampling_rate", type=int, default=16000)
     parser.add_argument("--frame_skip", type=int, default=1)
-    parser.add_argument("--sw_window_duration", type=float, default=4.0, help="Sliding window duration in seconds")
-    parser.add_argument("--sw_step_duration", type=float, default=4.0, help="Sliding window step in seconds")
+    parser.add_argument("--sw_window_duration", type=float, default=2.0, help="Sliding window duration in seconds")
+    parser.add_argument("--sw_step_duration", type=float, default=2.0, help="Sliding window step in seconds")
     parser.add_argument("--video_fps", type=int, default=83)
-    parser.add_argument("--checkpoint_dir", type=str, default="checkpoints/cond_unet_sw")
-    parser.add_argument("--log_dir", type=str, default="runs/cond_unet_sw")
+    parser.add_argument("--checkpoint_dir", type=str, default="checkpoints/cond_unet_sw_loss")
+    parser.add_argument("--log_dir", type=str, default="runs/cond_unet_sw_loss")
     args = parser.parse_args()
     
     os.makedirs(args.checkpoint_dir, exist_ok=True)
