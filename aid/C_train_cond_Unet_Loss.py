@@ -118,7 +118,7 @@ def train_one_epoch(model, audio_extractor, dataloader, criterion, optimizer, de
     # Typically, freeze the audio extractor (or set to eval) if using a pretrained model.
     audio_extractor.eval()  
     running_loss = 0.0
-
+    scaler = torch.cuda.amp.GradScaler()  # for mixed precision training
     for waveforms, video_windows, _, _ in dataloader:
         # waveforms: (B, num_windows, window_audio)
         # video_windows: (B, num_windows, window_video, 1, H, W)
@@ -147,11 +147,15 @@ def train_one_epoch(model, audio_extractor, dataloader, criterion, optimizer, de
                 output = model(vid_input, cond)  # Expected output shape: (B, 1, window_video, H, W)
                 loss = criterion(output, vid_input)
             batch_loss += loss
-            loss.backward()
+            # loss.backward()
+            scaler.scale(loss).backward()  # Scales the loss, calls backward on the scaled loss
 
         # Avg loss over windows
         batch_loss /= num_windows
-        optimizer.step()
+        # torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+        # optimizer.step()
+        scaler.step(optimizer)  # Unscales gradients and calls optimizer step
+        scaler.update()  # Updates the scale for next iteration
         running_loss += batch_loss.item() * waveforms.shape[0] # when using MSE or L1, it's an avg
 
     return running_loss / len(dataloader.dataset)
@@ -193,10 +197,10 @@ def main():
     nSubsv = [f"sub{str(i).zfill(3)}" for i in range(51, 75)]
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--epochs", type=int, default=100)
-    parser.add_argument("--batch_size", type=int, default=4, help="Batch size per GPU")
-    parser.add_argument("--lr", type=float, default=0.9e-3) # not 1e-3
-    parser.add_argument("--lr_step", type=int, default=5) # after every 10 epochs the lr is updated by gamma * lr
+    parser.add_argument("--epochs", type=int, default=50)
+    parser.add_argument("--batch_size", type=int, default=3, help="Batch size per GPU")
+    parser.add_argument("--lr", type=float, default=0.5e-3) # not 1e-3
+    parser.add_argument("--lr_step", type=int, default=10) # after every 10 epochs the lr is updated by gamma * lr
     parser.add_argument("--lr_gamma", type=float, default=0.5)
     parser.add_argument("--base_channels", type=int, default=32)
     parser.add_argument("--audio_root", type=str, default=audio_root)
@@ -265,7 +269,7 @@ def main():
     cond_dim = audio_extractor.feature_dim
     model = ConditionalUNet3D_FiLM(cond_dim=cond_dim, base_channels=args.base_channels).to(device)
 
-    criterion = CompositeSSL(lambda_l1=1.0, lambda_ssim=1.0, lambda_temporal=0.2, lambda_tv=0.01).to(device)
+    criterion = CompositeSSL(lambda_l1=0.5, lambda_ssim=1.0, lambda_temporal=0.05, lambda_tv=0.001).to(device)
     optimizer = optim.Adam(list(model.parameters()) + list(audio_extractor.parameters()), lr=args.lr) # audio has a linear layer
     scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=args.lr_step, gamma=args.lr_gamma) # after maybe 10
 

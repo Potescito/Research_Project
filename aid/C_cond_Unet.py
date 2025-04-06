@@ -5,7 +5,6 @@ Research Project WiSe 2024/25
 - Tutor:    Tomas Arias
 - Email:    tomas.arias@fau.de
 """
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
