@@ -227,9 +227,9 @@ if __name__ == "__main__":
     T, H, W = 16, 84, 84
     audio_dim = 768  
     x = torch.randn(B, 1, T, H, W).to(device)
-    audio_condition = torch.randn(B, T, audio_dim) # avg is done inside
+    audio_condition = torch.randn(B, T, audio_dim).to(device) # avg is done inside
     
-    model = ConditionalUNet3D_CrossAttn(n_channels=1, n_classes=1, audio_dim=audio_dim, base_channels=32, embed_dim=128, num_heads=4)
+    model = ConditionalUNet3D_CrossAttn(n_channels=1, n_classes=1, audio_dim=audio_dim, base_channels=32, embed_dim=128, num_heads=4).to(device)
     output = model(x, audio_condition)
     print("Output shape:", output.shape)  # Expected: (B, 1, T, H, W)
 

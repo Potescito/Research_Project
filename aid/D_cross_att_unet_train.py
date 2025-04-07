@@ -168,8 +168,7 @@ def main():
 
     #______________________________________________________________________________________
     audio_extractor = AudioFeatureExtractorFiLM(window_video=window_video,
-                                                 pretrained_model_name="facebook/wav2vec2-base-960h",
-                                                 freeze_wav2vec=True).to(device)
+                                                 pretrained_model_name="facebook/wav2vec2-base-960h").to(device)
     print("Audio feature extractor loaded.")
     
     #_____________________________________________________________________________________

@@ -103,11 +103,11 @@ def main():
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--epochs", type=int, default=50)
-    parser.add_argument("--batch_size", type=int, default=3, help="Batch size per GPU")
-    parser.add_argument("--lr", type=float, default=0.5e-3) # not 1e-3
+    parser.add_argument("--batch_size", type=int, default=4, help="Batch size per GPU")
+    parser.add_argument("--lr", type=float, default=0.4e-3) # not 1e-3
     parser.add_argument("--lr_step", type=int, default=10) # after every 10 epochs the lr is updated by gamma * lr
     parser.add_argument("--lr_gamma", type=float, default=0.5)
-    parser.add_argument("--base_channels", type=int, default=32)
+    parser.add_argument("--base_channels", type=int, default=16)
     parser.add_argument("--audio_root", type=str, default=audio_root)
     parser.add_argument("--video_root", type=str, default=video_root)
     parser.add_argument("--subs_t", type=list, default=nSubst)
@@ -168,8 +168,7 @@ def main():
 
     #______________________________________________________________________________________
     audio_extractor = AudioFeatureExtractorFiLM(window_video=window_video,
-                                                 pretrained_model_name="facebook/wav2vec2-base-960h",
-                                                 freeze_wav2vec=True).to(device)
+                                                 pretrained_model_name="facebook/wav2vec2-base-960h").to(device)
     print("Audio feature extractor loaded.")
     
     #_____________________________________________________________________________________
@@ -179,14 +178,14 @@ def main():
                                         embed_dim=128, num_heads=4).to(device)
     
     #____________________________________________________________________________________
-    criterion = CompositeSSL(lambda_l1=1.0, lambda_ssim=0.5, lambda_temporal=0.05, lambda_tv=0.001).to(device)
+    criterion = CompositeSSL(lambda_l1=1.0, lambda_ssim=0.6, lambda_temporal=0.05, lambda_tv=0.001).to(device)
     # criterion = nn.L1Loss()
     optimizer = optim.Adam(list(model.parameters()) + list(audio_extractor.parameters()), lr=args.lr)
     scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=args.lr_step, gamma=args.lr_gamma)
     
     num_epochs = args.epochs
     best_val_loss = float('inf')
-    print("Training Conditional U-Net with Cross-Attention Fusion...")
+    print("Training Conditional U-Net with Self/Cross-Attention Fusion...")
     
     for epoch in range(1, num_epochs + 1):
         epoch_start = time.time()

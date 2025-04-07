@@ -57,13 +57,13 @@ class Down3D(nn.Module):
         super(Down3D, self).__init__()
         self.pool = nn.MaxPool3d(kernel_size=2) #spatial and temporal downsampling
         self.conv = DoubleConv3D(in_channels, out_channels)
-        self.film = FiLM(cond_dim, out_channels)
+        # self.film = FiLM(cond_dim, out_channels)
     
     def forward(self, x, condition):
         x = self.pool(x)
         x = self.conv(x)
-        gamma, beta = self.film(condition)
-        x = gamma * x + beta # FiLM paper does it as simple as this
+        # gamma, beta = self.film(condition)
+        # x = gamma * x + beta # FiLM paper does it as simple as this
         return x
 
 # Upsampling Block with FiLM conditioning
@@ -82,7 +82,7 @@ class Up3D(nn.Module):
             self.up = nn.ConvTranspose3d(in_channels, up_channels, kernel_size=2, stride=2) # use deconvs if not interpolation (check patterns) -> halfs the channel dim
             # self.conv = DoubleConv3D(out_channels * 2, out_channels)
         self.conv = DoubleConv3D(skip_channels + up_channels, out_channels)
-        self.film = FiLM(cond_dim, out_channels) # also here
+        # self.film = FiLM(cond_dim, out_channels) # also here
     
     def forward(self, x1, x2, condition):
         # x1: from decoder (B, C, T, H, W); x2: skip connection from encoder.
@@ -105,8 +105,8 @@ class Up3D(nn.Module):
         # print(x.shape, x1.shape, x2.shape)
         x = self.conv(x)
         # Apply FiLM modulation.
-        gamma, beta = self.film(condition)
-        x = gamma * x + beta
+        # gamma, beta = self.film(condition)
+        # x = gamma * x + beta
         return x
 
 
@@ -194,7 +194,7 @@ class HybridAttentionUNet(nn.Module):
         
         # bot
         self.bot = DoubleConv3D(base_channels * 4, base_channels * 8)
-        self.film_bot = FiLM(audio_dim, base_channels * 8) # should I take this out?
+        # self.film_bot = FiLM(audio_dim, base_channels * 8) # should I take this out?
 
         self.cross_attn = CrossAttentionBlock(video_channels=base_channels * 8,
                                               audio_dim=audio_dim,
@@ -228,8 +228,8 @@ class HybridAttentionUNet(nn.Module):
         x3 = x3_attn.permute(0, 2, 1).view(B, C, T_enc, H_enc, W_enc)
         
         x_bot = self.bot(x3)  # (B, base_channels*8, T/4, H/4, W/4)
-        gamma_bot, beta_bot = self.film_bot(cond_pool)
-        x_bot = gamma_bot * x_bot + beta_bot
+        # gamma_bot, bea_bot = self.film_bot(cond_pool)
+        # x_bot = gamma_bot * x_bot + beta_bot
         
         # Downsample audio condition to match bottleneck time dimension T/4 (time of x_bot)
         T_bot = x_bot.size(2)
@@ -265,12 +265,12 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(device)
     B = 2
-    T, H, W = 16, 84, 84
+    T, H, W = 166, 84, 84
     audio_dim = 768  
     x = torch.randn(B, 1, T, H, W).to(device)
-    audio_condition = torch.randn(B, T, audio_dim) # avg is done inside
+    audio_condition = torch.randn(B, T, audio_dim).to(device) # avg is done inside
     
-    model = HybridAttentionUNet(n_channels=1, n_classes=1, audio_dim=audio_dim, base_channels=32, embed_dim=128, num_heads=4)
+    model = HybridAttentionUNet(n_channels=1, n_classes=1, audio_dim=audio_dim, base_channels=32, embed_dim=128, num_heads=4).to(device)
     output = model(x, audio_condition)
     print("Output shape:", output.shape)  # Expected: (B, 1, T, H, W)
 
