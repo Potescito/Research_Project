@@ -16,11 +16,11 @@ from src.utils import save_videos
 from src.AVDataset import AVDataset
 from src.transforms import SlidingWindowTransform
 from C_wav2vec2_AP import AudioFeatureExtractorFiLM
-from C_cond_Unet import ConditionalUNet3D_FiLM
+from D_cross_att_unet import ConditionalUNet3D_CrossAttn
 
 sw_transform = SlidingWindowTransform(2, 2)
 
-def test_model(model, audio_extractor, test_loader, device, output_dir="../data/test_outputs/cond_unet_sw_loss"):
+def test_model(model, audio_extractor, test_loader, device, output_dir="../data/test_outputs/cross_att_unet"):
     model.eval()
     audio_extractor.eval()
     os.makedirs(output_dir, exist_ok=True)
@@ -33,9 +33,8 @@ def test_model(model, audio_extractor, test_loader, device, output_dir="../data/
             frames_i = frames[:,0, ...].to(device)
             print(waveform_i.shape, frames_i.shape)
             audio_feats = audio_extractor(waveform_i)  # (B, window_video, feature_dim)
-            cond = audio_feats.mean(dim=1) # (B, cond_dim).
             vid_input = frames_i.permute(0, 2, 1, 3, 4)  # becomes B, 1, window_video, H, W
-            outputs = model(vid_input, cond)  # Expected output shape: (B, 1, window_video, H, W)
+            outputs = model(vid_input, audio_feats)  # Expected output shape: (B, 1, window_video, H, W)
             print(outputs)
             loss = criterion(outputs, vid_input)
             running_loss += loss.item() * waveform_i.size(0)
@@ -69,9 +68,11 @@ audio_extractor = AudioFeatureExtractorFiLM(window_video=window_video,
                                                 ).to(device)
 
 cond_dim = audio_extractor.feature_dim
-model = ConditionalUNet3D_FiLM(cond_dim=cond_dim, base_channels=32).to(device)
+model = ConditionalUNet3D_CrossAttn(n_channels=1, n_classes=1, audio_dim=cond_dim,
+                                        base_channels=32,
+                                        embed_dim=128, num_heads=4).to(device)
 
-checkpoint_path = "checkpoints/cond_unet_sw_loss/cond_unet_film_epoch48.pth"
+checkpoint_path = "checkpoints/cross_att/cross_att10.pth"
 model.load_state_dict(torch.load(checkpoint_path, map_location=device))
 
 test_loss, r = test_model(model, audio_extractor, test_loader, device)
