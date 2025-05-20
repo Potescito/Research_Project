@@ -144,7 +144,7 @@ if __name__ == "__main__":
                         frame_skip=1)
     print("Number of pairs:", len(dataset))
 
-    dataloader = DataLoader(dataset, batch_size=1, shuffle=False, collate_fn=AVDataset.collate) # Batch / Collation
+    dataloader = DataLoader(dataset, batch_size=2, shuffle=False, collate_fn=AVDataset.collate) # Batch / Collation
     for (waveform, frames, audio_path, video_path) in dataloader:
         print(waveform.shape, frames.shape, audio_path, video_path)
         break
@@ -213,7 +213,7 @@ if __name__ == "__main__":
     
     nSubs = [f"sub{str(i).zfill(3)}" for i in range(1, 3)]
 
-    sw_transform = SlidingWindowTransform(window_duration=4, step_duration=4, audio_sample_rate=16000, video_fps=83)
+    sw_transform = SlidingWindowTransform(window_duration=1, step_duration=0.5, audio_sample_rate=16000, video_fps=83)
 
     dataset = AVDataset(audio_root=audio_root, 
                         video_root=video_root, 
@@ -225,6 +225,7 @@ if __name__ == "__main__":
                         frame_skip=1)
     print("Number of pairs:", len(dataset))
 
+    print("SW transform outside collate")
     dataloader = DataLoader(dataset, batch_size=5, shuffle=False, collate_fn=AVDataset.collate) # Batch / Collation
     for (waveform, frames, audio_path, video_path) in dataloader:
         print(waveform.shape, frames.shape, audio_path, video_path)
@@ -234,12 +235,18 @@ if __name__ == "__main__":
         print(video_reconst.shape)
         print("")
     
-    print("inside collate")
+    print("SW transform inside collate")
     dataloader = DataLoader(dataset, batch_size=5, shuffle=False, 
                             collate_fn=lambda batch: AVDataset.collate(batch, sw_transform)) # Batch / Collation
     for (waveform, frames, audio_path, video_path) in dataloader:
         print(waveform.shape, frames.shape, audio_path, video_path)
-        video_reconst = sw_transform.overlap_add(padded_frames)
+        video_reconst = sw_transform.overlap_add(frames)
         print(video_reconst.shape)
         print("")
-# %%
+    
+    print("Video Min/Max:", frames.min(), frames.max())
+    print("Video Reconstr. Min/Max:", video_reconst.min(), video_reconst.max())
+
+    # import utils as ut
+    # ut.Video(frames[1, 0:5].reshape(-1, 1, 84, 84), mode=2, subrate=1)
+    # ut.Audio(waveform[1, 0:5, :].reshape(1, -1))

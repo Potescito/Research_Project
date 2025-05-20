@@ -12,10 +12,107 @@ import cv2
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
+from matplotlib.animation import FuncAnimation
+
+try:
+    from IPython.display import Audio as disAu, HTML, display
+except ImportError:
+    print("IPython is not installed. Audio/Video display will not work.")
 
 plt.rcParams['font.family'] = 'serif'
 plt.rcParams['font.serif'] = ['DejaVu Serif', 'Liberation Serif']
 plt.rcParams["font.size"] = 12
+
+
+def Audio(data, rate: int=16000):
+    """
+    Display an audio waveform in a Jupyter notebook.
+
+    Args:
+        data (np.ndarray/torch.tensor): Audio data to be displayed (ch, samples).
+        rate (int): Sample rate of the audio data.
+    """
+    data_play = data.detach().cpu().numpy() if hasattr(data, 'cpu') else data
+    try:
+        display(disAu(data_play, rate=rate), display_id=False)
+    except Exception as e:
+        print(f"Error displaying audio: {e}")
+        print("Ensure that the data is in the correct format (ch, samples) or (samples) and try again.")
+        raise e
+
+
+def Video(data, subrate=10, mode=1, fps=83):
+    """
+    Display a video in a Jupyter notebook.
+
+    Args:
+        data (np.ndarray/torch.tensor): Video data to be displayed (frames, ch, H, W).
+        mode (int): 1 for clip (faster), 2  for advanced viewer (slower).
+        fps (int): Frames per second for the video.
+    """
+    frames_np = data.detach().cpu().numpy() if hasattr(data, 'cpu') else data # Shape: (F, C, H, W)
+    if frames_np.shape[1] == 1: # Grayscale: (F, 1, H, W)
+        processed_frames = np.transpose(frames_np, (0, 2, 3, 1)).squeeze(axis=3) # (F, H, W)
+        cmap_choice = 'gray'
+    elif frames_np.shape[1] == 3: # RGB: (F, C, H, W)
+        processed_frames = np.transpose(frames_np, (0, 2, 3, 1)) # (F, H, W, C)
+        cmap_choice = None
+    else:
+        raise ValueError(f"Unsupported channel size: {frames_np.shape[1]}")    
+
+    # Subsample the video frames
+    subsampled_anim_frames = processed_frames[::subrate]
+    print(f"Original frame count for animation: {processed_frames.shape[0]}")
+    print(f"Subsampled frame count for animation: {subsampled_anim_frames.shape[0]}")
+    	
+    # Normalize the subsampled data
+    min_val_anim, max_val_anim = subsampled_anim_frames.min(), subsampled_anim_frames.max()
+    if max_val_anim > min_val_anim:
+        anim_frames_to_show = (subsampled_anim_frames - min_val_anim) / (max_val_anim - min_val_anim)
+    else:
+        anim_frames_to_show = np.zeros_like(subsampled_anim_frames)
+
+    if anim_frames_to_show.shape[0] > 0:
+        fig, ax = plt.subplots()
+        plt.close(fig) # Close initial plot -> no display of static plot of the first frame 
+        ax.set_axis_off()
+        img_obj = ax.imshow(anim_frames_to_show[0], cmap=cmap_choice, vmin=0, vmax=1)
+    
+        def update_anim_frame(frame_idx):
+            img_obj.set_data(anim_frames_to_show[frame_idx])
+            return [img_obj]
+
+        # Create animation with fewer frames
+        # Interval: 1000ms / desired_fps. E.g., 1000/10fps = 100ms
+        anim = FuncAnimation(fig, update_anim_frame, frames=anim_frames_to_show.shape[0], interval=1000/fps, blit=True)
+
+        # Display the animation
+        if mode == 1:
+            # to_html5_video for better performance
+            try:
+                # Check if ffmpeg is available, otherwise to_html5_video might fail silently or error
+                # A more robust check might be needed depending on your system
+                import shutil
+                if shutil.which('ffmpeg'):
+                    print("Attempting to display with animation.to_html5_video() (requires ffmpeg)")
+                    display(HTML(anim.to_html5_video()))
+                else:
+                    print("ffmpeg not found. Falling back to animation.to_jshtml() (can be slow).")
+                    print("Install ffmpeg for better video animation performance in notebooks.")
+                    display(HTML(anim.to_jshtml())) # Fallback, can be very slow for many frames
+            except Exception as e:
+                print(f"Error displaying animation: {e}")
+                print("Consider installing ffmpeg or further reducing frame count.")
+        elif mode == 2:
+            try:
+                display(HTML(anim.to_jshtml())) # to_jshtml is generally reliable
+            except Exception as e:
+                print(f"Error displaying animation: {e}")
+        else:
+            raise ValueError(f"Unsupported mode: {mode}. Use 1 for clip or 2 for advanced viewer.")
+    else:
+        raise ValueError("No frames to display after subsampling.")
+
 
 def save_ds(path: str, dataset: dict):
     """ 
@@ -134,6 +231,7 @@ def imshow(imgs: list,
             draw_box(ax, noise_box_coords, box_linewidth, box_edgecolor)
     plt.show()
 
+
 def calc_snr(src: np.ndarray, signal_box_coords: tuple, noise_box_coords: tuple):
     """ 
     This function calculates the SNR value of an image from the given signal and noise box coordinates.
@@ -149,6 +247,7 @@ def calc_snr(src: np.ndarray, signal_box_coords: tuple, noise_box_coords: tuple)
         signal = src[signal_y: signal_y + signal_height, signal_x:signal_x + signal_width]
         noise = src[noise_y: noise_y + noise_height, noise_x:noise_x + noise_width]
     return np.mean(signal) / np.std(noise)
+
 
 def annotate_metrics(src : np.ndarray, 
                      ax : plt.Axes, 
@@ -176,6 +275,7 @@ def annotate_metrics(src : np.ndarray,
         verticalalignment="top",
         fontweight=font_weight,
     )
+
 
 def draw_box(ax, box_coords: tuple, box_linewidth: int = 2, box_edgecolor: str = "r"):
     """ 

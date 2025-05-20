@@ -36,7 +36,7 @@ class AudioProcessor(Dataset):
     def __getitem__(self, idx):
         file_path = self.audio_files[idx]
         waveform, sr = torchaudio.load(file_path)
-        
+        print(sr)
         # Resample if needed
         if sr != self.target_sampling_rate:
             resampler = torchaudio.transforms.Resample(orig_freq=sr, new_freq=self.target_sampling_rate)
@@ -55,3 +55,4 @@ if __name__ == "__main__":
     for waveform, file_path in dataloader:
         print(waveform.shape, file_path)
         break
+# %%
