@@ -92,13 +92,13 @@ def sample_ddpm(
         
         if (t_val) % 100 == 0 or t_val == total_timesteps_T -1 :
             print(f"  Sampling step {t_val}/{total_timesteps_T}")
-            _, ax = plt.subplots(1, num_images, figsize=(15, 5))
-            for i in range(num_images):
-                img_to_show = xt[i].squeeze().cpu().numpy() 
-                ax[i].imshow(img_to_show, cmap='gray')
-                ax[i].set_title(f"Generated Image {i+1}")
-                ax[i].axis('off')
-            plt.show()
+            # _, ax = plt.subplots(1, num_images, figsize=(15, 5))
+            # for i in range(num_images):
+            #     img_to_show = xt[i].squeeze().cpu().numpy() 
+            #     ax[i].imshow(img_to_show, cmap='gray')
+            #     ax[i].set_title(f"Generated Image {i+1}")
+            #     ax[i].axis('off')
+            # plt.show()
 
     print("Sampling complete.")
     # The final xt (which is x0 after the loop) is the generated image batch
@@ -109,7 +109,7 @@ def sample_ddpm(
 
 def main():
     # --- Assume models, diffusion_params are loaded and on DEVICE ---
-    DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+    DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     TOTAL_TIMESTEPS_T = 1000
     audio_encoder = SimpleAudioEncoder(output_embedding_dim=512).to(DEVICE) 
     timestep_embedder = TimestepEmbedding(dim=256).to(DEVICE)
@@ -126,14 +126,33 @@ def main():
     betas = cosine_beta_schedule(timesteps=TOTAL_TIMESTEPS_T)
     diffusion_params_dict = get_diffusion_parameters(betas=betas, device=DEVICE)
 
-    checkpoint = torch.load("checkpoints/F_diffusionv1/checkpoint_epoch_50.pth", map_location=DEVICE) # Or your best checkpoint
+    checkpoint = torch.load("checkpoints/F_diffusionatt/ckp_45.pth", map_location=DEVICE) # Or your best checkpoint
     unet_model.load_state_dict(checkpoint['unet_model_state_dict'])
     audio_encoder.load_state_dict(checkpoint['audio_encoder_state_dict'])
     print(f"Models loaded from epoch {checkpoint['epoch']} with loss {checkpoint.get('loss', 'N/A')}")
 
     num_samples_to_generate = 4
     example_audio_segment_length = 16000 
-    dummy_audio_for_sampling = torch.randn(num_samples_to_generate, example_audio_segment_length).to(DEVICE) # real should be the audio
+
+    sw_transform = SlidingWindowTransform(1, 1, example_audio_segment_length, 83)
+    ds = AVDataset(
+        audio_root=r"../data/audios_denoised_16khz",
+        video_root=r"../data/dataset_2drt_video_only",
+        subs=["sub075"],
+        filter_keyword="vcv",
+        transform=None,  # No extra transform raw data will be padded and then sliding window applied in collate
+        video_max_frames=None,
+        audio_sampling_rate=example_audio_segment_length,
+        frame_skip=1
+    )
+    dataloader = DataLoader(ds, batch_size=4,
+                            collate_fn=lambda batch: AVDataset.collate(batch, sw_transform))
+    for (waveform, frames, audio_path, video_path) in dataloader:
+        print(waveform.shape, frames.shape, audio_path, video_path)
+        break
+
+    # dummy_audio_for_sampling = torch.randn(num_samples_to_generate, example_audio_segment_length).to(DEVICE) # real should be the audio
+    dummy_audio_for_sampling = waveform[:,10,:].to(DEVICE) # Use the first channel of the first batch
 
     generated_images = sample_ddpm(
         unet_model=unet_model,
@@ -141,7 +160,7 @@ def main():
         timestep_embedder=timestep_embedder,
         diffusion_params=diffusion_params_dict,
         num_images=num_samples_to_generate,
-        image_shape=(1, 256, 256),
+        image_shape=(1, 84, 84),
         audio_segment_batch=dummy_audio_for_sampling,
         total_timesteps_T=TOTAL_TIMESTEPS_T,
         device=DEVICE

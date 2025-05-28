@@ -146,7 +146,7 @@ class ResidualBlock(nn.Module):
                  dropout_rate=0.1, 
                  groups=8, 
                  use_attention=False, 
-                 attention_heads=4, 
+                 attention_heads=8, 
                  audio_emb_dim=None):
         super().__init__()
         self.in_channels = in_channels
@@ -183,7 +183,12 @@ class ResidualBlock(nn.Module):
         # Optional Attention Block (placeholder for now, to be detailed for audio)
         if self.use_attention:
             # This will be replaced by a proper CrossAttention block later
-            self.attention = AttentionBlock(out_channels, num_heads=attention_heads, groups=groups, context_dim=audio_emb_dim)
+            self.attention = SpatioTemporalAttentionBlock(
+                out_channels, # query_dim is the channel dim of the image features
+                audio_emb_dim=audio_emb_dim, # context_dim
+                num_heads=attention_heads,
+                dropout=dropout_rate
+            )
         else:
             self.attention = nn.Identity()
 
@@ -220,57 +225,132 @@ class ResidualBlock(nn.Module):
 
         # Apply attention (if configured)
         if self.use_attention:
-            x = self.attention(x, context=audio_emb) # audio_emb will be used by a real CrossAttention
+            x = self.attention(x, audio_emb=audio_emb) # audio_emb will be used by a real CrossAttention
         return x
 
 
 # ====================================================================
 # Attention Block
 # ====================================================================
-class AttentionBlock(nn.Module):
-    """
-    Placeholder for an Attention Block.
-    A real implementation would use MultiHeadAttention for self-attention or cross-attention.
-
-    Args:
-        channels (int): Number of input channels.
-        num_heads (int): Number of attention heads.
-        groups (int): Number of groups for GroupNorm.
-        context_dim (int, optional): Dimensionality of the context vector for cross-attention. Default is None.
-    """
-    def __init__(self, channels, num_heads=4, groups=8, context_dim=None):
+class CrossAttentionLayer(nn.Module):
+    def __init__(self,
+                 query_dim, # Dimensionality of the query (image features)
+                 context_dim, # Dimensionality of the context (audio features)
+                 num_heads=8,
+                 head_dim=None, # Dimensionality of each attention head
+                 dropout=0.0):
         super().__init__()
-        self.channels = channels
-        self.num_heads = num_heads
-        self.context_dim = context_dim # For cross-attention
+        if head_dim is None:
+            if query_dim % num_heads != 0:
+                raise ValueError(f"query_dim ({query_dim}) must be divisible by num_heads ({num_heads}) if head_dim is not specified.")
+            head_dim = query_dim // num_heads
         
-        # This is a placeholder. A real attention block (e.g., nn.MultiheadAttention)
-        # would be implemented here. For now, it acts as a near identity
-        # to show where attention would be applied.
+        self.inner_dim = head_dim * num_heads # Total dimension across all heads
+        self.num_heads = num_heads
+        self.scale = head_dim ** -0.5 # 1/sqrt(d_k)
+
+        self.to_q = nn.Linear(query_dim, self.inner_dim, bias=False)
+        self.to_k = nn.Linear(context_dim, self.inner_dim, bias=False)
+        self.to_v = nn.Linear(context_dim, self.inner_dim, bias=False)
+
+        self.to_out = nn.Sequential(
+            nn.Linear(self.inner_dim, query_dim), #in case the concatenation does not match query_dim 
+            nn.Dropout(dropout)
+        )
+
+    def forward(self, query, context=None, context_mask=None):
+        # query:   [batch_size, query_sequence_length, query_dim]
+        # context: [batch_size, context_sequence_length, context_dim]
+        # context_mask: [batch_size, context_sequence_length] (optional)
+
+        if context is None:
+            context = query # If no context is provided, use the query as context (self-attention)
+
+        q = self.to_q(query)
+        k = self.to_k(context)
+        v = self.to_v(context)
+
+        # Reshape for multi-head attention: [B, num_heads, seq_len, head_dim]
+        q = q.view(q.shape[0], q.shape[1], self.num_heads, -1).transpose(1, 2)
+        k = k.view(k.shape[0], k.shape[1], self.num_heads, -1).transpose(1, 2)
+        v = v.view(v.shape[0], v.shape[1], self.num_heads, -1).transpose(1, 2)
+
+        # Scaled dot-product attention
+        # (B, num_heads, query_len, head_dim) @ (B, num_heads, head_dim, key_len) -> (B, num_heads, query_len, key_len)
+        attention_scores = torch.matmul(q, k.transpose(-1, -2)) * self.scale
+
+        if context_mask is not None:
+            # Apply mask (for padding in context)
+            # Mask should be broadcastable: (B, 1, 1, key_len)
+            attention_scores = attention_scores.masked_fill(context_mask.unsqueeze(1).unsqueeze(2) == 0, float('-inf'))
+        
+        attention_probs = F.softmax(attention_scores, dim=-1)
+
+        # (B, num_heads, query_len, key_len) @ (B, num_heads, key_len, head_dim) -> (B, num_heads, query_len, head_dim)
+        out = torch.matmul(attention_probs, v)
+
+        # Concatenate heads and project out
+        out = out.transpose(1, 2).contiguous().view(out.shape[0], out.shape[2], -1) # [B, query_len, inner_dim]
+        return self.to_out(out)
+
+
+class SpatioTemporalAttentionBlock(nn.Module):
+    def __init__(self, 
+                 channels, # Input channels of the image feature map (query_dim)
+                 audio_emb_dim, # Dimension of the audio embedding (context_dim)
+                 num_heads=8, 
+                 head_dim=None, 
+                 groups=8, 
+                 dropout=0.1):
+        super().__init__()
+
         self.norm = nn.GroupNorm(groups, channels)
-        self.proj_in = nn.Conv2d(channels, channels, kernel_size=1) # Simulate some processing
-        self.proj_out = nn.Conv2d(channels, channels, kernel_size=1)
+        
+        self.cross_attention = CrossAttentionLayer(
+            query_dim=channels,
+            context_dim=audio_emb_dim,
+            num_heads=num_heads,
+            head_dim=head_dim,
+            dropout=dropout
+        )
+        # Optional: Add a feed-forward network after attention
+        self.ffn = nn.Sequential(
+            nn.Linear(channels, channels * 4),
+            nn.GELU(), # Or SiLU
+            nn.Linear(channels * 4, channels)
+        )
 
-        if self.context_dim:
-            print(f"AttentionBlock (Placeholder): Channels={channels}, ContextDim={context_dim}. Will be used for Cross-Attention.")
+    def forward(self, x, audio_emb):
+        # x: image features [B, C, H, W]
+        # audio_emb: audio embedding [B, D_audio_emb] or [B, NumAudioTokens, D_audio_emb_per_token]
+        
+        B, C, H, W = x.shape
+
+        x_norm = self.norm(x)
+        
+        # Reshape x for attention: [B, C, H, W] -> [B, H*W, C]
+        query = x_norm.view(B, C, H * W).permute(0, 2, 1) # [B, HW, C]
+
+        # Prepare context. If audio_emb is [B, D_audio_emb], we need to make it [B, 1, D_audio_emb]
+        # for sequence-like input to attention.
+        if audio_emb.ndim == 2: # [B, D_audio_emb]
+            context = audio_emb.unsqueeze(1) # [B, 1, D_audio_emb]
+        elif audio_emb.ndim == 3: # [B, NumAudioTokens, D_audio_emb_per_token]
+            context = audio_emb
         else:
-            print(f"AttentionBlock (Placeholder): Channels={channels}. Will be used for Self-Attention.")
+            raise ValueError(f"audio_emb has unexpected ndim: {audio_emb.ndim}")
 
-    def forward(self, x, context=None):
-        # Placeholder behavior: normalize, project, and add back (residual)
-        h = self.norm(x)
-        h = self.proj_in(h)
-        # In a real attention block:
-        # B, C, H, W = x.shape
-        # h = h.view(B, C, H * W).transpose(1, 2)  # (B, H*W, C)
-        # if context is not None:
-        #   context = context.view(B, context.shape[1], -1) # Reshape context if needed
-        #   h = self_attention_with_cross_attention(h, context)
-        # else:
-        #   h = self_attention(h)
-        # h = h.transpose(1, 2).view(B, C, H, W)
-        # h = self.proj_out(h)
-        return x + h # Residual connection
+        # Apply cross-attention
+        attn_out = self.cross_attention(query, context) # Output: [B, HW, C]
+        
+        # Optional: Feed-forward network
+        ffn_out = self.ffn(attn_out)
+        attn_out = attn_out + ffn_out # Additive skip over FFN, or just use FFN output
+
+        # Reshape back to image format: [B, HW, C] -> [B, C, H, W]
+        attn_out = attn_out.permute(0, 2, 1).view(B, C, H, W)
+
+        return x + attn_out # residual connection
 
 
 # ====================================================================
@@ -318,7 +398,7 @@ class UNet(nn.Module):
                  attention_resolutions=(2,3), # At which levels (depths) to apply attention (1-indexed)
                                               # e.g., (2,3) means at the 2nd and 3rd down/up blocks
                  groups=8,              # Number of groups for GroupNorm
-                 attention_heads=4      # Number of attention heads for attention blocks
+                 attention_heads=8      # Number of attention heads for attention blocks
                  ):
         super().__init__()
 
@@ -523,7 +603,7 @@ if __name__ == "__main__":
     print(torchinfo.summary(unet_model, input_size=(input.shape, timemb.shape, audioemb.shape), device="cuda"))
 
 
-"""
+""" Without CrossAttention (placeholder)
 ==========================================================================================
 Total params: 44,162,625
 Trainable params: 44,162,625
@@ -535,4 +615,18 @@ Forward/backward pass size (MB): 358.04
 Params size (MB): 174.28
 Estimated Total Size (MB): 532.39
 ==========================================================================================
+"""
+
+""" With CrossAttention
+=========================================================================================================
+Total params: 50,986,561
+Trainable params: 50,986,561
+Non-trainable params: 0
+Total mult-adds (Units.GIGABYTES): 29.86
+=========================================================================================================
+Input size (MB): 0.06
+Forward/backward pass size (MB): 494.11
+Params size (MB): 203.95
+Estimated Total Size (MB): 698.12
+=========================================================================================================
 """

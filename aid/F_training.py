@@ -33,7 +33,9 @@ def train_diffusion_model(
     optimizer,
     device,
     total_timesteps_T, # T value used for get_diffusion_parameters (e.g., 1000)
-    gradient_accumulation_steps=1 # Optional: for accumulating gradients
+    gradient_accumulation_steps=1, # Optional: for accumulating gradients
+    writer = None,
+    checkpoint_dir = "checkpoints/"
 ):
     """
     Training loop for the audio-visual diffusion model.
@@ -41,11 +43,13 @@ def train_diffusion_model(
     unet_model.train()
     audio_encoder.train()
     timestep_embedder.train() # in case I decide to use learnable timestep embeddings
+    best_loss = float('inf')
 
-    for epoch in range(num_epochs):
+    for epoch in range(1, num_epochs + 1):
+        epoch_start = time.time()
         total_loss = 0.0
         num_samples_processed = 0 # To average loss correctly if batch sizes vary or steps are skipped
-
+        
         for batch_idx, batch_data in enumerate(dataloader):
             video_segments = batch_data[1].to(device)
             audio_segments = batch_data[0].to(device)
@@ -123,25 +127,28 @@ def train_diffusion_model(
             total_loss += loss.item() * (gradient_accumulation_steps if (batch_idx + 1) % gradient_accumulation_steps == 0 or (batch_idx + 1) == len(dataloader) else 0) # Re-scale accumulated loss for logging
             num_samples_processed += B # Count actual samples processed for loss averaging
 
-            if (batch_idx + 1) % 10 == 0: # Log every 100 effective steps
+            if (batch_idx + 1) % 50 == 0:
                 current_avg_loss = total_loss / (batch_idx +1) # Rough average loss so far in epoch
-                print(f"Epoch [{epoch+1}/{num_epochs}], Batch [{batch_idx+1}/{len(dataloader)}], Current Avg Loss: {current_avg_loss:.4f}, Last Mini-Batch Loss: {loss.item():.4f}")
+                print(f"--Epoch [{epoch}/{num_epochs}], Batch [{batch_idx+1}/{len(dataloader)}], Current Avg Loss: {current_avg_loss:.4f}, Last Mini-Batch Loss: {loss.item():.4f}")
         
         # avg_epoch_loss = total_loss / len(dataloader) # If not using grad accum or careful batch counting
         avg_epoch_loss = total_loss / ( (len(dataloader) + gradient_accumulation_steps -1 ) // gradient_accumulation_steps ) # Avg loss over effective optimization steps
-        print(f"Epoch [{epoch+1}/{num_epochs}] completed. Average Loss: {avg_epoch_loss:.4f}")
+        print(f"Epoch [{epoch}/{num_epochs}] completed. Average Loss: {avg_epoch_loss:.4f}. [Time: {time.time() - epoch_start:.2f}s]")
+        if writer is not None:
+            writer.add_scalar('Loss/Train', avg_epoch_loss, epoch)
 
-        # Optional: Save checkpoint
-        torch.save({
-            'epoch': epoch,
-            'unet_model_state_dict': unet_model.state_dict(),
-            'audio_encoder_state_dict': audio_encoder.state_dict(),
-            'optimizer_state_dict': optimizer.state_dict(),
-            'loss': avg_epoch_loss,
-        }, f"checkpoint_epoch_{epoch+1}.pth")
+        if avg_epoch_loss < best_loss:
+            best_loss = avg_epoch_loss
+            checkpoint_path = os.path.join(checkpoint_dir, f"ckp_{epoch}.pth")
+            torch.save({
+                'epoch': epoch,
+                'unet_model_state_dict': unet_model.state_dict(),
+                'audio_encoder_state_dict': audio_encoder.state_dict(),
+                'optimizer_state_dict': optimizer.state_dict(),
+                'loss': avg_epoch_loss,
+            }, checkpoint_path)
 
     print("Training finished.")
-    return avg_epoch_loss
 
 
 def main():
@@ -153,10 +160,10 @@ def main():
     nSubsv = [f"sub{str(i).zfill(3)}" for i in range(51, 75)]
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--epochs", type=int, default=50)
+    parser.add_argument("--epochs", type=int, default=500)
     parser.add_argument("--batch_size", type=int, default=4, help="Batch size per GPU")
     parser.add_argument("--time_steps", type=int, default=1000, help="Total diffusion timesteps")
-    parser.add_argument("--lr", type=float, default=1e-4)
+    parser.add_argument("--lr", type=float, default=0.5e-4)
     parser.add_argument("--audio_root", type=str, default=audio_root)
     parser.add_argument("--video_root", type=str, default=video_root)
     parser.add_argument("--subs_t", type=list, default=nSubst)
@@ -168,8 +175,8 @@ def main():
     parser.add_argument("--sw_window_duration", type=float, default=1, help="Sliding window duration in seconds")
     parser.add_argument("--sw_step_duration", type=float, default=1, help="Sliding window step in seconds")
     parser.add_argument("--video_fps", type=int, default=83)
-    parser.add_argument("--checkpoint_dir", type=str, default="checkpoints/F_diffusionv1")
-    parser.add_argument("--log_dir", type=str, default="runs/F_diffusionv1")
+    parser.add_argument("--checkpoint_dir", type=str, default="checkpoints/F_diffusionatt")
+    parser.add_argument("--log_dir", type=str, default="runs/F_diffusionatt")
     args = parser.parse_args()
     
     os.makedirs(args.checkpoint_dir, exist_ok=True)
@@ -236,31 +243,24 @@ def main():
     betas = cosine_beta_schedule(timesteps=args.time_steps)
     diffusion_params_dict = get_diffusion_parameters(betas=betas, device=device)
     
+    #_____________________________________________________________________________________
     num_epochs = args.epochs
-    # best_val_loss = float('inf')
-    print("Training Diffusion Model v1...")
+    print("Training Diffusion Model...")
     
-    for epoch in range(1, num_epochs + 1):
-        epoch_start = time.time()
-        train_loss = train_diffusion_model(
-            num_epochs=num_epochs,
-            dataloader=train_loader, # YOUR ACTUAL DATALOADER
-            unet_model=unet,
-            audio_encoder=audio_enc,
-            timestep_embedder=time_emb,
-            diffusion_params=diffusion_params_dict,
-            optimizer=optimizer,
-            device=device,
-            total_timesteps_T=args.time_steps,
-        )
-
-        writer.add_scalar('Loss/Train', train_loss, epoch)
-        
-        # print(f"Epoch {epoch}/{num_epochs} - Time: {time.time()-epoch_start:.2f}s - Train Loss: {train_loss:.4f}")
-        # if val_loss < best_val_loss:
-        #     best_val_loss = val_loss
-        #     checkpoint_path = os.path.join(args.checkpoint_dir, f"cross_att{epoch}.pth")
-        #     torch.save(model.state_dict(), checkpoint_path)
+    train_diffusion_model(
+        num_epochs=num_epochs,
+        dataloader=train_loader, 
+        unet_model=unet,
+        audio_encoder=audio_enc,
+        timestep_embedder=time_emb,
+        diffusion_params=diffusion_params_dict,
+        optimizer=optimizer,
+        device=device,
+        total_timesteps_T=args.time_steps,
+        gradient_accumulation_steps=1,  # Adjust 
+        writer=writer,
+        checkpoint_dir=args.checkpoint_dir
+    )
     writer.close()
 
 

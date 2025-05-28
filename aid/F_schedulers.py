@@ -50,7 +50,7 @@ def get_alphas_and_cumprod(betas):
     return alphas, alphas_cumprod
 
 
-def get_diffusion_parameters(betas, device='cpu'):
+def get_diffusion_parameters(betas, device=torch.device("cpu")):
     """
     Pre-computes all necessary parameters for the diffusion process.
 
