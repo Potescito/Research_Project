@@ -6,6 +6,14 @@ Research Project WiSe 2024/25
 - Email:    tomas.arias@fau.de
 """
 import os
+import sys
+if sys.platform.startswith('win'):
+    print("Running on Windows. Setting OpenCV backend priorities for MSMF and GStreamer.")
+    os.environ["OPENCV_VIDEOIO_PRIORITY_MSMF"] = "100"
+    os.environ["OPENCV_VIDEOIO_PRIORITY_GSTREAMER"] = "0"
+else:
+    print(f"Running on {sys.platform}. Skipping MSMF-specific OpenCV backend priority settings.")
+
 import cv2
 import numpy as np
 import torch
