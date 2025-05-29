@@ -135,6 +135,5 @@ data/test_outputs/
 #
 examples/Metrics/denoised*
 examples/Metrics/noise.npz
-aid/checkpoints/F_diffusionv1/*
-aid/checkpoints/F_diffusionatt/*
+aid/checkpoints/*
 

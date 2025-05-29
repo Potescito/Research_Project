@@ -13,15 +13,16 @@ import argparse
 import torch
 import torch.optim as optim
 import torch.nn.functional as F
+from torchvision.utils import make_grid
 
 from torch.utils.data import DataLoader
-from torch.utils.tensorboard import SummaryWriter
+from torch.utils.tensorboard.writer import SummaryWriter
 from src.AVDataset import AVDataset 
 from src.transforms import SlidingWindowTransform
 
 from F_diffusion import UNet, SimpleAudioEncoder, TimestepEmbedding
 from F_schedulers import get_diffusion_parameters, extract, cosine_beta_schedule
-
+from F_inference import sample_ddpm
 
 def train_diffusion_model(
     num_epochs,
@@ -35,14 +36,19 @@ def train_diffusion_model(
     total_timesteps_T, # T value used for get_diffusion_parameters (e.g., 1000)
     gradient_accumulation_steps=1, # Optional: for accumulating gradients
     writer = None,
-    checkpoint_dir = "checkpoints/"
+    checkpoint_dir = "checkpoints/",
+
+    fixed_val_audio_segments=None, # New parameter
+    image_shape_for_validation=None, # New parameter: (C,H,W)
+    validate_every_n_epochs=5  # New parameter
 ):
     """
     Training loop for the audio-visual diffusion model.
     """
     unet_model.train()
     audio_encoder.train()
-    timestep_embedder.train() # in case I decide to use learnable timestep embeddings
+    if isinstance(timestep_embedder, torch.nn.Module):
+        timestep_embedder.train() # in case I decide to use learnable timestep embeddings
     best_loss = float('inf')
 
     for epoch in range(1, num_epochs + 1):
@@ -137,9 +143,49 @@ def train_diffusion_model(
         if writer is not None:
             writer.add_scalar('Loss/Train', avg_epoch_loss, epoch)
 
+        # --- Qualitative Validation Sampling Step ---
+        if fixed_val_audio_segments is not None and \
+           image_shape_for_validation is not None and \
+           epoch % validate_every_n_epochs == 0:
+            
+            print(f"--- Running qualitative validation for epoch {epoch} ---")
+            unet_model.eval()
+            audio_encoder.eval()
+            if isinstance(timestep_embedder, torch.nn.Module):
+                timestep_embedder.eval()
+
+            generated_images_val = sample_ddpm( # Call your sampling function
+                unet_model=unet_model,
+                audio_encoder=audio_encoder,
+                timestep_embedder=timestep_embedder,
+                diffusion_params=diffusion_params,
+                num_images=fixed_val_audio_segments.shape[0],
+                image_shape=image_shape_for_validation,
+                audio_segment_batch=fixed_val_audio_segments.to(device), # Ensure on correct device
+                total_timesteps_T=total_timesteps_T,
+                device=device
+            )
+
+            if writer is not None and generated_images_val is not None:
+                # Clamp images to [0,1] if your sample_ddpm already does this,
+                # or if they are in [-1,1] make_grid can normalize.
+                # Your sample_ddpm has: x0_hat = torch.clamp(x0_hat, 0.0, 1.0)
+                # So, generated_images_val should be in [0,1]
+                img_grid = make_grid(generated_images_val.cpu(), nrow=fixed_val_audio_segments.shape[0] // 2 or 1)
+                writer.add_image('Validation/Generated_Samples', img_grid, global_step=epoch)
+                print(f"--- Logged {generated_images_val.shape[0]} validation samples to TensorBoard for epoch {epoch} ---")
+            
+            # Switch models back to train mode
+            unet_model.train()
+            audio_encoder.train()
+            if isinstance(timestep_embedder, torch.nn.Module):
+                timestep_embedder.train()
+
+
+        # --- Checkpointing  Saving ---
         if avg_epoch_loss < best_loss:
             best_loss = avg_epoch_loss
-            checkpoint_path = os.path.join(checkpoint_dir, f"ckp_{epoch}.pth")
+            checkpoint_path = os.path.join(checkpoint_dir, f"ckp_epoch_{epoch}_loss_{best_loss:.4f}.pth")
             torch.save({
                 'epoch': epoch,
                 'unet_model_state_dict': unet_model.state_dict(),
@@ -157,10 +203,10 @@ def main():
     keyword = "vcv"
 
     nSubst = [f"sub{str(i).zfill(3)}" for i in range(1, 51)]
-    nSubsv = [f"sub{str(i).zfill(3)}" for i in range(51, 75)]
+    nSubsv = [f"sub{str(i).zfill(3)}" for i in range(51, 52)] # 75
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--epochs", type=int, default=500)
+    parser.add_argument("--epochs", type=int, default=200)
     parser.add_argument("--batch_size", type=int, default=4, help="Batch size per GPU")
     parser.add_argument("--time_steps", type=int, default=1000, help="Total diffusion timesteps")
     parser.add_argument("--lr", type=float, default=0.5e-4)
@@ -175,8 +221,8 @@ def main():
     parser.add_argument("--sw_window_duration", type=float, default=1, help="Sliding window duration in seconds")
     parser.add_argument("--sw_step_duration", type=float, default=1, help="Sliding window step in seconds")
     parser.add_argument("--video_fps", type=int, default=83)
-    parser.add_argument("--checkpoint_dir", type=str, default="checkpoints/F_diffusionatt")
-    parser.add_argument("--log_dir", type=str, default="runs/F_diffusionatt")
+    parser.add_argument("--checkpoint_dir", type=str, default="checkpoints/F_diffusionatt_sys")
+    parser.add_argument("--log_dir", type=str, default="runs/F_diffusionatt_sys")
     args = parser.parse_args()
     
     os.makedirs(args.checkpoint_dir, exist_ok=True)
@@ -201,23 +247,69 @@ def main():
         frame_skip=args.frame_skip
     )
 
-    # dataset_v = AVDataset(
-    #     audio_root=args.audio_root,
-    #     video_root=args.video_root,
-    #     subs=args.subs_v,
-    #     filter_keyword=args.filter_keyword,
-    #     transform=None,  # No extra transform raw data will be padded and then sliding window applied in collate
-    #     video_max_frames=args.video_max_frames,
-    #     audio_sampling_rate=args.audio_sampling_rate,
-    #     frame_skip=args.frame_skip
-    # )
+    dataset_v = AVDataset(
+        audio_root=args.audio_root,
+        video_root=args.video_root,
+        subs=args.subs_v,
+        filter_keyword=args.filter_keyword,
+        transform=None,  # No extra transform raw data will be padded and then sliding window applied in collate
+        video_max_frames=args.video_max_frames,
+        audio_sampling_rate=args.audio_sampling_rate,
+        frame_skip=args.frame_skip
+    )
 
     #_______________________________________________________________________________________
     train_loader = DataLoader(dataset_t, batch_size=args.batch_size,
                               collate_fn=lambda batch: AVDataset.collate(batch, sw_transform))
-    # val_loader = DataLoader(dataset_v, batch_size=args.batch_size,
-    #                         collate_fn=lambda batch: AVDataset.collate(batch, sw_transform))
+    val_loader = DataLoader(dataset_v, batch_size=args.batch_size,
+                            collate_fn=lambda batch: AVDataset.collate(batch, sw_transform))
     print("Dataset loaded and collated.")
+
+
+    # =======================SYS (end-of-epoch validation sampling)========================
+    val_sampling_audio = None
+    val_image_shape = None
+    num_val_samples_to_log = 4 # Num of samples I generate for validation
+
+    # Try to get samples from the train_loader (ensure it's not empty)
+    # A more robust approach is a separate validation loader with fixed samples. I use this
+    if len(val_loader) > 0:
+        try:
+            # Fetch one batch to get some consistent audio samples
+            # It's good if shuffle=False for this specific batch fetch, or just take from first shuffled batch
+            # For true validation, these samples should ideally be from a held-out validation set
+            fixed_batch_for_val_sampling = next(iter(val_loader)) 
+            
+            # batch_data is a tuple: (waveform, frames, audio_path, video_path)
+            audio_val_candidates = fixed_batch_for_val_sampling[0].to(device) # Audio is at index 0
+            video_val_candidates = fixed_batch_for_val_sampling[1].to(device) # Video is at index 1
+
+            B_val_batch, N_aseg_val, L_a_val = audio_val_candidates.shape
+            _, N_vseg_val, _, C_val, H_val, W_val = video_val_candidates.shape
+            
+            actual_num_to_log = min(num_val_samples_to_log, B_val_batch)
+            min_num_seg_val_batch = min(N_aseg_val, N_vseg_val)
+
+            if actual_num_to_log > 0 and min_num_seg_val_batch > 0:
+                # Select one random segment for each of the 'actual_num_to_log' samples
+                rand_seg_indices_val = torch.randint(0, min_num_seg_val_batch, (actual_num_to_log,), device=device)
+                
+                # Take audio from the first 'actual_num_to_log' items in the batch, using their respective random segment
+                val_sampling_audio = audio_val_candidates[torch.arange(actual_num_to_log, device=device), rand_seg_indices_val].clone().detach()
+                val_image_shape = (C_val, H_val, W_val) # Get C, H, W from the video part
+                print(f"Prepared {val_sampling_audio.shape[0]} audio segments for epoch-end validation sampling.")
+            else:
+                print("Could not prepare validation audio: Not enough samples or segments in the first batch.")
+        except StopIteration:
+            print("Training dataloader is empty. Cannot prepare fixed audio for validation sampling.")
+        except Exception as e:
+            print(f"Error preparing fixed audio for validation sampling: {e}")
+    else:
+        print("Training dataloader has no batches. Cannot prepare fixed audio for validation sampling.")
+    #=======================SYS (end-of-epoch validation sampling)========================
+
+
+
 
     #______________________________________________________________________________________
     audio_enc = SimpleAudioEncoder(output_embedding_dim=512).to(device) 
@@ -259,10 +351,15 @@ def main():
         total_timesteps_T=args.time_steps,
         gradient_accumulation_steps=1,  # Adjust 
         writer=writer,
-        checkpoint_dir=args.checkpoint_dir
+        checkpoint_dir=args.checkpoint_dir,
+
+        # SYS: Pass validation sampling parameters
+        fixed_val_audio_segments=val_sampling_audio,
+        image_shape_for_validation=val_image_shape,
+        validate_every_n_epochs=10,  # For example, sample every 5 epochs
+
     )
     writer.close()
-
 
 if __name__ == "__main__":
     main()
