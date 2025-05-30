@@ -222,8 +222,8 @@ def main():
     parser.add_argument("--sw_window_duration", type=float, default=1, help="Sliding window duration in seconds")
     parser.add_argument("--sw_step_duration", type=float, default=1, help="Sliding window step in seconds")
     parser.add_argument("--video_fps", type=int, default=83)
-    parser.add_argument("--checkpoint_dir", type=str, default="checkpoints/F_diffusionatt_sys_wav2vec2np")
-    parser.add_argument("--log_dir", type=str, default="runs/F_diffusionatt_sys_wav2vec2np")
+    parser.add_argument("--checkpoint_dir", type=str, default="checkpoints/F_diffusionatt_sys_wav2vec2p_pool_projection_50")
+    parser.add_argument("--log_dir", type=str, default="runs/F_diffusionatt_sys_wav2vec2p_pool_projection_50")
     args = parser.parse_args()
     
     os.makedirs(args.checkpoint_dir, exist_ok=True)
@@ -317,7 +317,7 @@ def main():
     audio_enc = PretrainedAudioEncoder(
         model_name="facebook/wav2vec2-base-960h", 
         freeze_encoder=True, # Start with frozen weights
-        # output_dim=NEW_AUDIO_EMB_DIM # No projection needed if using native dim
+        output_dim=512, # enable a trainable projection layer and compare
         process=False,
     ).to(device)
 
