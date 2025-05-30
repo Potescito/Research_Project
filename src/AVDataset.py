@@ -86,7 +86,6 @@ class AVDataset(Dataset):
 
         if waveform.size(0) == 1:
             waveform = waveform.squeeze(0)  #  num_samples
-        
         cap = cv2.VideoCapture(video_path)
         frames = []
         frame_count = 0
@@ -252,6 +251,7 @@ if __name__ == "__main__":
         print(video_reconst.shape)
         print("")
     
+    print("Audio Min/Max:", waveform.min(), waveform.max())
     print("Video Min/Max:", frames.min(), frames.max())
     print("Video Reconstr. Min/Max:", video_reconst.min(), video_reconst.max())
 
