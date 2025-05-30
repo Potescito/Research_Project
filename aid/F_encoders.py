@@ -63,12 +63,12 @@ class PretrainedAudioEncoder(nn.Module):
         outputs = self.pretrained_model(input_values=audio_waveforms, attention_mask=attention_mask)
         sequence_features = outputs.last_hidden_state # Shape: [Batch, NumAudioFrames, NativeFeatureDim]
 
-        pooled_features = torch.mean(sequence_features, dim=1) 
+        # pooled_features = torch.mean(sequence_features, dim=1) 
 
         if self.projection:
-            sequence_features = self.projection(pooled_features)
+            sequence_features = self.projection(sequence_features)
             
-        return pooled_features
+        return sequence_features
 
     def get_output_dim(self):
         return self.final_output_dim
