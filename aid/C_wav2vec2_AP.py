@@ -42,7 +42,7 @@ class AudioFeatureExtractorFiLM(nn.Module):
             torch.Tensor: Audio feature sequence of shape (B, window_video, feature_dim)
         """
         if self.pre:
-            inputs = self.processor(waveform.cpu().numpy(), sampling_rate=16000, return_tensors="pt") # the input must be normalized [-1, 1]
+            inputs = self.processor(waveform.cpu().numpy(), sampling_rate=16000, return_tensors="pt") # the input must be normalized [-1, 1] -> this doesnt do that
             inputs = inputs.input_values.to(waveform.device)
         else:
             inputs = waveform

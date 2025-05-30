@@ -21,6 +21,7 @@ from src.AVDataset import AVDataset
 from src.transforms import SlidingWindowTransform
 
 from F_diffusion import UNet, SimpleAudioEncoder, TimestepEmbedding
+from F_encoders import PretrainedAudioEncoder
 from F_schedulers import get_diffusion_parameters, extract, cosine_beta_schedule
 from F_inference import sample_ddpm
 
@@ -88,7 +89,7 @@ def train_diffusion_model(
 
             # --- Audio Embedding ---
             # The audio embedding corresponds to the entire audio segment for the chosen frame's segment
-            audio_emb_batch = audio_encoder(audio_segment_for_x0) # Expected shape: [B, D_audio_emb]
+            audio_emb_batch = audio_encoder(audio_segment_for_x0) # Expected shape: [B, D_audio_emb] or [B, Tokens, D_audio_emb]
 
             # --- Forward Diffusion Process ---
             # 1. Sample random timesteps 't' for each item in the batch (from 0 to T-1)
@@ -206,7 +207,7 @@ def main():
     nSubsv = [f"sub{str(i).zfill(3)}" for i in range(51, 52)] # 75
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--epochs", type=int, default=200)
+    parser.add_argument("--epochs", type=int, default=50)
     parser.add_argument("--batch_size", type=int, default=4, help="Batch size per GPU")
     parser.add_argument("--time_steps", type=int, default=1000, help="Total diffusion timesteps")
     parser.add_argument("--lr", type=float, default=0.5e-4)
@@ -221,8 +222,8 @@ def main():
     parser.add_argument("--sw_window_duration", type=float, default=1, help="Sliding window duration in seconds")
     parser.add_argument("--sw_step_duration", type=float, default=1, help="Sliding window step in seconds")
     parser.add_argument("--video_fps", type=int, default=83)
-    parser.add_argument("--checkpoint_dir", type=str, default="checkpoints/F_diffusionatt_sys")
-    parser.add_argument("--log_dir", type=str, default="runs/F_diffusionatt_sys")
+    parser.add_argument("--checkpoint_dir", type=str, default="checkpoints/F_diffusionatt_sys_wav2vec2np")
+    parser.add_argument("--log_dir", type=str, default="runs/F_diffusionatt_sys_wav2vec2np")
     args = parser.parse_args()
     
     os.makedirs(args.checkpoint_dir, exist_ok=True)
@@ -284,7 +285,7 @@ def main():
             audio_val_candidates = fixed_batch_for_val_sampling[0].to(device) # Audio is at index 0
             video_val_candidates = fixed_batch_for_val_sampling[1].to(device) # Video is at index 1
 
-            B_val_batch, N_aseg_val, L_a_val = audio_val_candidates.shape
+            B_val_batch, N_aseg_val, _ = audio_val_candidates.shape
             _, N_vseg_val, _, C_val, H_val, W_val = video_val_candidates.shape
             
             actual_num_to_log = min(num_val_samples_to_log, B_val_batch)
@@ -312,7 +313,14 @@ def main():
 
 
     #______________________________________________________________________________________
-    audio_enc = SimpleAudioEncoder(output_embedding_dim=512).to(device) 
+    # audio_enc = SimpleAudioEncoder(output_embedding_dim=512).to(device)
+    audio_enc = PretrainedAudioEncoder(
+        model_name="facebook/wav2vec2-base-960h", 
+        freeze_encoder=True, # Start with frozen weights
+        # output_dim=NEW_AUDIO_EMB_DIM # No projection needed if using native dim
+        process=False,
+    ).to(device)
+
     time_emb = TimestepEmbedding(dim=256).to(device)
     #_____________________________________________________________________________________
     unet = UNet(
@@ -322,13 +330,13 @@ def main():
         channel_multipliers=(1, 2, 4, 8), # Or your preferred config
         num_residual_blocks=2,
         time_emb_dim=256, # Must match TimestepEmbedding output
-        audio_emb_dim=512, # Must match SimpleAudioEncoder output
+        audio_emb_dim=audio_enc.get_output_dim(),
         attention_resolutions=(2,3) 
     ).to(device)
     
     #____________________________________________________________________________________
     optimizer = optim.AdamW(
-        list(unet.parameters()) + list(audio_enc.parameters()), # Add other model params if they have learnable weights
+        list(unet.parameters()) + list(audio_enc.parameters()), # If audio enc has a projection then it's added
         lr=args.lr
     )
     #_____________________________________________________________________________________

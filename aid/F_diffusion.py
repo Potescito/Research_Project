@@ -116,6 +116,9 @@ class SimpleAudioEncoder(nn.Module):
         audio_embedding = self.fc(x) # (batch_size, output_embedding_dim)
 
         return audio_embedding
+    
+    def get_output_dim(self):
+        return self.output_embedding_dim
 
 
 # ====================================================================
