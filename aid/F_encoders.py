@@ -7,26 +7,45 @@ Research Project WiSe 2024/25
 """
 import torch
 import torch.nn as nn
-from transformers import Wav2Vec2Model, Wav2Vec2Processor  #, HubertModel, WavLMModel
+from transformers import Wav2Vec2Model, Wav2Vec2Processor, WavLMModel, HubertModel
 
 class PretrainedAudioEncoder(nn.Module):
-    def __init__(self, model_name="facebook/wav2vec2-base-960h", freeze_encoder=True, output_dim=None, process=False):
+    def __init__(self, model="Wav2Vec2", model_name=None, freeze_encoder=True, output_dim=None, process=False, pooling=False):
         """
         Audio encoder using a pre-trained model from Hugging Face Transformers.
 
         Args:
-            model_name (str): Name of the pre-trained model (e.g., "facebook/wav2vec2-base-960h").
+            model (str): Type of pre-trained model to use. Currently supports "Wav2Vec2", "WavLM" or "HuBERT".
+            model_name (str): Name of the pre-trained model (e.g., "facebook/wav2vec2-base-960h", "microsoft/wavlm-base", "facebook/hubert-base-ls960"). If none, defaults to base models.
             freeze_encoder (bool): If True, freezes the weights of the pre-trained model.
             output_dim (int, optional): If specified, adds a linear layer to project features to this dimension.
                                          Otherwise, uses the native output dimension of the pre-trained model.
             process (bool): If True, uses the processor to handle input normalization and memory transfers.
+            pooling (bool): If True, applies mean pooling over the time dimension to reduce the output to a fixed size.
         """
         super().__init__()
         self.process = process
-        self.model_name = model_name
-        self.pretrained_model = Wav2Vec2Model.from_pretrained(model_name)
+        self.pooling = pooling
+        if model == "WavLM":
+            if model_name is None:
+                model_name = "microsoft/wavlm-base"
+            self.pretrained_model = WavLMModel.from_pretrained(model_name)
+        elif model == "Wav2Vec2":
+            if model_name is None:
+                model_name = "facebook/wav2vec2-base-960h"
+            self.pretrained_model = Wav2Vec2Model.from_pretrained(model_name)
+        elif model == "HuBERT":
+            if model_name is None:
+                model_name = "facebook/hubert-base-ls960"
+            self.pretrained_model = HubertModel.from_pretrained(model_name)
+        else:  
+            raise ValueError(f"Unsupported model type: {model}. Supported types are 'Wav2Vec2', 'WavLM', or 'HuBERT'.")
+
         if process:
-            self.processor = Wav2Vec2Processor.from_pretrained(model_name)
+            if model == "Wav2Vec2":
+                self.processor = Wav2Vec2Processor.from_pretrained(model_name)
+            else:
+                self.processor = Wav2Vec2Processor.from_pretrained("facebook/wav2vec2-base-960h")
         
         if freeze_encoder:
             for param in self.pretrained_model.parameters():
@@ -38,10 +57,10 @@ class PretrainedAudioEncoder(nn.Module):
         if output_dim is not None and output_dim != self.native_feature_dim:
             self.projection = nn.Linear(self.native_feature_dim, output_dim)
             self.final_output_dim = output_dim
-            print(f"Initialized PretrainedAudioEncoder with {model_name}. Native dim: {self.native_feature_dim}, Projected to: {output_dim}, {'Pre-process' if process else 'No Pre-process'}")
+            print(f"\033[93mInitialized {model} with {model_name}. Native dim: {self.native_feature_dim}, Projected to: {output_dim}, {'Pre-process' if process else 'No Pre-process'}\033[0m")
         else:
             self.final_output_dim = self.native_feature_dim
-            print(f"Initialized PretrainedAudioEncoder with {model_name}. Native dim: {self.native_feature_dim}, {'Pre-process' if process else 'No Pre-process'}")
+            print(f"\033[93mInitialized {model} with {model_name}. Native dim: {self.native_feature_dim}, {'Pre-process' if process else 'No Pre-process'}\033[0m")
 
     def forward(self, audio_waveforms):
         """
@@ -63,12 +82,13 @@ class PretrainedAudioEncoder(nn.Module):
         outputs = self.pretrained_model(input_values=audio_waveforms, attention_mask=attention_mask)
         sequence_features = outputs.last_hidden_state # Shape: [Batch, NumAudioFrames, NativeFeatureDim]
 
-        pooled_features = torch.mean(sequence_features, dim=1) 
-
         if self.projection:
-            sequence_features = self.projection(pooled_features)
+            sequence_features = self.projection(sequence_features)
+
+        if self.pooling:
+            sequence_features = torch.mean(sequence_features, dim=1) 
             
-        return pooled_features
+        return sequence_features
 
     def get_output_dim(self):
         return self.final_output_dim
@@ -101,3 +121,21 @@ if __name__ == '__main__':
     print("Shape of sequence features (projected):", audio_features_projected_seq.shape) # e.g., [4, 49, 512]
     print("Output dim (projected):", audio_enc_projected.get_output_dim())
     print(audio_features_projected_seq.min(), audio_features_projected_seq.max())
+    print("")
+
+    # Check other models
+    # WavLM
+    wavlm_enc = PretrainedAudioEncoder(model="WavLM", freeze_encoder=True, process=True).to(DEVICE)
+    wavlm_features = wavlm_enc(dummy_audio)
+    print("WavLM features shape:", wavlm_features.shape)  # e.g., [4, 49, 768]
+    print("WavLM output dim:", wavlm_enc.get_output_dim())
+    print(wavlm_features.min(), wavlm_features.max())
+    print("")
+
+    # HuBERT
+    hubert_enc = PretrainedAudioEncoder(model="HuBERT", freeze_encoder=True, process=True).to(DEVICE)
+    hubert_features = hubert_enc(dummy_audio)
+    print("HuBERT features shape:", hubert_features.shape)  # e.g., [4, 49, 768]
+    print("HuBERT output dim:", hubert_enc.get_output_dim())
+    print(hubert_features.min(), hubert_features.max())
+    print("")
