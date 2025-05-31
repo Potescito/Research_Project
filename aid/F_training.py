@@ -207,7 +207,7 @@ def main():
     nSubsv = [f"sub{str(i).zfill(3)}" for i in range(51, 52)] # 75
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--epochs", type=int, default=50)
+    parser.add_argument("--epochs", type=int, default=200)
     parser.add_argument("--batch_size", type=int, default=4, help="Batch size per GPU")
     parser.add_argument("--time_steps", type=int, default=1000, help="Total diffusion timesteps")
     parser.add_argument("--lr", type=float, default=0.5e-4)
@@ -222,8 +222,8 @@ def main():
     parser.add_argument("--sw_window_duration", type=float, default=1, help="Sliding window duration in seconds")
     parser.add_argument("--sw_step_duration", type=float, default=1, help="Sliding window step in seconds")
     parser.add_argument("--video_fps", type=int, default=83)
-    parser.add_argument("--checkpoint_dir", type=str, default="checkpoints/F_diffusionatt_sys_wav2vec2largep_50")
-    parser.add_argument("--log_dir", type=str, default="runs/F_diffusionatt_sys_wav2vec2largep_50")
+    parser.add_argument("--checkpoint_dir", type=str, default="checkpoints/F_diffusionatt_sys_wav2vec2largep_trainable_200")
+    parser.add_argument("--log_dir", type=str, default="runs/F_diffusionatt_sys_wav2vec2largep_trainable_200")
     args = parser.parse_args()
     
     os.makedirs(args.checkpoint_dir, exist_ok=True)
@@ -316,7 +316,7 @@ def main():
     # audio_enc = SimpleAudioEncoder(output_embedding_dim=512).to(device)
     audio_enc = PretrainedAudioEncoder(
         model_name="facebook/wav2vec2-large-960h-lv60-self", 
-        freeze_encoder=True, # Start with frozen weights
+        freeze_encoder=False, # Start with frozen weights
         # output_dim=512, # enable a trainable projection layer and compare
         process=True,
         pooling=False,
