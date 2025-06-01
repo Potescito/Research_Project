@@ -184,7 +184,7 @@ def train_diffusion_model(
 
 
         # --- Checkpointing  Saving ---
-        if avg_epoch_loss < best_loss:
+        if avg_epoch_loss < best_loss and epoch >= 20:
             best_loss = avg_epoch_loss
             checkpoint_path = os.path.join(checkpoint_dir, f"ckp_epoch_{epoch}_loss_{best_loss:.4f}.pth")
             torch.save({
@@ -222,8 +222,8 @@ def main():
     parser.add_argument("--sw_window_duration", type=float, default=1, help="Sliding window duration in seconds")
     parser.add_argument("--sw_step_duration", type=float, default=1, help="Sliding window step in seconds")
     parser.add_argument("--video_fps", type=int, default=83)
-    parser.add_argument("--checkpoint_dir", type=str, default="checkpoints/F_diffusionatt_sys_wav2vec2largep_trainable_200")
-    parser.add_argument("--log_dir", type=str, default="runs/F_diffusionatt_sys_wav2vec2largep_trainable_200")
+    parser.add_argument("--checkpoint_dir", type=str, default="checkpoints/F_diffusionatt_sys_wav2vec2p_trainable_50")
+    parser.add_argument("--log_dir", type=str, default="runs/F_diffusionatt_sys_wav2vec2p_trainable_50")
     args = parser.parse_args()
     
     os.makedirs(args.checkpoint_dir, exist_ok=True)
@@ -315,7 +315,7 @@ def main():
     #______________________________________________________________________________________
     # audio_enc = SimpleAudioEncoder(output_embedding_dim=512).to(device)
     audio_enc = PretrainedAudioEncoder(
-        model_name="facebook/wav2vec2-large-960h-lv60-self", 
+        # model_name="facebook/wav2vec2-large-960h-lv60-self", 
         freeze_encoder=False, # Start with frozen weights
         # output_dim=512, # enable a trainable projection layer and compare
         process=True,
