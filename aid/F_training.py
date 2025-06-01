@@ -12,6 +12,7 @@ import time
 import argparse
 import torch
 import torch.optim as optim
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 import torch.nn.functional as F
 from torchvision.utils import make_grid
 
@@ -33,15 +34,16 @@ def train_diffusion_model(
     timestep_embedder, 
     diffusion_params, # dictionary from get_diffusion_parameters
     optimizer,
+    scheduler,
     device,
     total_timesteps_T, # T value used for get_diffusion_parameters (e.g., 1000)
-    gradient_accumulation_steps=1, # Optional: for accumulating gradients
+    gradient_accumulation_steps=1, # Optional for accumulating gradients
     writer = None,
     checkpoint_dir = "checkpoints/",
 
-    fixed_val_audio_segments=None, # New parameter
-    image_shape_for_validation=None, # New parameter: (C,H,W)
-    validate_every_n_epochs=5  # New parameter
+    fixed_val_audio_segments=None,
+    image_shape_for_validation=None, # (C,H,W)
+    validate_every_n_epochs=5 
 ):
     """
     Training loop for the audio-visual diffusion model.
@@ -134,15 +136,19 @@ def train_diffusion_model(
             total_loss += loss.item() * (gradient_accumulation_steps if (batch_idx + 1) % gradient_accumulation_steps == 0 or (batch_idx + 1) == len(dataloader) else 0) # Re-scale accumulated loss for logging
             num_samples_processed += B # Count actual samples processed for loss averaging
 
-            if (batch_idx + 1) % 50 == 0:
-                current_avg_loss = total_loss / (batch_idx +1) # Rough average loss so far in epoch
-                print(f"--Epoch [{epoch}/{num_epochs}], Batch [{batch_idx+1}/{len(dataloader)}], Current Avg Loss: {current_avg_loss:.4f}, Last Mini-Batch Loss: {loss.item():.4f}")
+            # if (batch_idx + 1) % 100 == 0:
+            #     current_avg_loss = total_loss / (batch_idx +1) # Rough average loss so far in epoch
+            #     print(f"--Epoch [{epoch}/{num_epochs}], Batch [{batch_idx+1}/{len(dataloader)}], Current Avg Loss: {current_avg_loss:.4f}, Last Mini-Batch Loss: {loss.item():.4f}")
         
         # avg_epoch_loss = total_loss / len(dataloader) # If not using grad accum or careful batch counting
         avg_epoch_loss = total_loss / ( (len(dataloader) + gradient_accumulation_steps -1 ) // gradient_accumulation_steps ) # Avg loss over effective optimization steps
-        print(f"Epoch [{epoch}/{num_epochs}] completed. Average Loss: {avg_epoch_loss:.4f}. [Time: {time.time() - epoch_start:.2f}s]")
+        print(f"Epoch [{epoch}/{num_epochs}] completed. Avg Loss: {avg_epoch_loss:.4f}. LR: {optimizer.param_groups[0]['lr']:.2e}. [Time: {time.time() - epoch_start:.2f}s]")
         if writer is not None:
             writer.add_scalar('Loss/Train', avg_epoch_loss, epoch)
+            writer.add_scalar('LearningRate', optimizer.param_groups[0]['lr'], epoch) # Log learning rate
+
+        # --- Learning Rate Scheduler Step ---
+        scheduler.step(avg_epoch_loss)
 
         # --- Qualitative Validation Sampling Step ---
         if fixed_val_audio_segments is not None and \
@@ -195,10 +201,11 @@ def train_diffusion_model(
                 'loss': avg_epoch_loss,
             }, checkpoint_path)
 
-    print("Training finished.")
-
 
 def main():
+    torch.manual_seed(42)
+    torch.cuda.manual_seed_all(42)
+    
     audio_root = r"../data/audios_denoised_16khz"
     video_root = r"../data/dataset_2drt_video_only"
     keyword = "vcv"
@@ -207,7 +214,7 @@ def main():
     nSubsv = [f"sub{str(i).zfill(3)}" for i in range(51, 52)] # 75
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--epochs", type=int, default=200)
+    parser.add_argument("--epochs", type=int, default=100)
     parser.add_argument("--batch_size", type=int, default=4, help="Batch size per GPU")
     parser.add_argument("--time_steps", type=int, default=1000, help="Total diffusion timesteps")
     parser.add_argument("--lr", type=float, default=0.5e-4)
@@ -222,16 +229,17 @@ def main():
     parser.add_argument("--sw_window_duration", type=float, default=1, help="Sliding window duration in seconds")
     parser.add_argument("--sw_step_duration", type=float, default=1, help="Sliding window step in seconds")
     parser.add_argument("--video_fps", type=int, default=83)
-    parser.add_argument("--checkpoint_dir", type=str, default="checkpoints/F_diffusionatt_sys_wavlm_pool_50")
-    parser.add_argument("--log_dir", type=str, default="runs/F_diffusionatt_sys_wavlm_pool_50")
+    parser.add_argument("--checkpoint_dir", type=str, default="checkpoints/F_diffusionatt_")
+    parser.add_argument("--log_dir", type=str, default="runs/F_diffusionatt_")
+    parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
     args = parser.parse_args()
     
     os.makedirs(args.checkpoint_dir, exist_ok=True)
     writer = SummaryWriter(args.log_dir)
 
     # ______________________________________________________________________________________
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(device)
+    device = torch.device(args.device)
+    print("Device", device)
     
     # ______________________________________________________________________________________
     sw_transform = SlidingWindowTransform(args.sw_window_duration, args.sw_step_duration,
@@ -264,7 +272,7 @@ def main():
                               collate_fn=lambda batch: AVDataset.collate(batch, sw_transform))
     val_loader = DataLoader(dataset_v, batch_size=args.batch_size,
                             collate_fn=lambda batch: AVDataset.collate(batch, sw_transform))
-    print("Dataset loaded and collated.")
+    print("Dataset loaded and collated. Train len:", len(train_loader), "Val len:", len(val_loader))
 
 
     # =======================SYS (end-of-epoch validation sampling)========================
@@ -272,13 +280,8 @@ def main():
     val_image_shape = None
     num_val_samples_to_log = 4 # Num of samples I generate for validation
 
-    # Try to get samples from the train_loader (ensure it's not empty)
-    # A more robust approach is a separate validation loader with fixed samples. I use this
     if len(val_loader) > 0:
         try:
-            # Fetch one batch to get some consistent audio samples
-            # It's good if shuffle=False for this specific batch fetch, or just take from first shuffled batch
-            # For true validation, these samples should ideally be from a held-out validation set
             fixed_batch_for_val_sampling = next(iter(val_loader)) 
             
             # batch_data is a tuple: (waveform, frames, audio_path, video_path)
@@ -310,8 +313,6 @@ def main():
     #=======================SYS (end-of-epoch validation sampling)========================
 
 
-
-
     #______________________________________________________________________________________
     # audio_enc = SimpleAudioEncoder(output_embedding_dim=512).to(device)
     audio_enc = PretrainedAudioEncoder(
@@ -341,6 +342,7 @@ def main():
         list(unet.parameters()) + list(audio_enc.parameters()), # If audio enc has a projection then it's added
         lr=args.lr
     )
+    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=5, min_lr=1e-7)
     #_____________________________________________________________________________________
     betas = cosine_beta_schedule(timesteps=args.time_steps)
     diffusion_params_dict = get_diffusion_parameters(betas=betas, device=device)
@@ -357,9 +359,11 @@ def main():
         timestep_embedder=time_emb,
         diffusion_params=diffusion_params_dict,
         optimizer=optimizer,
+        scheduler=scheduler,
         device=device,
         total_timesteps_T=args.time_steps,
         gradient_accumulation_steps=1,  # Adjust 
+
         writer=writer,
         checkpoint_dir=args.checkpoint_dir,
 
@@ -370,6 +374,7 @@ def main():
 
     )
     writer.close()
+    print("Training complete. Checkpoints saved in:", args.checkpoint_dir, "and logs in:", args.log_dir, "lr:", args.lr)
 
 if __name__ == "__main__":
     main()
