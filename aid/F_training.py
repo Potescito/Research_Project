@@ -235,8 +235,8 @@ def main():
     parser.add_argument("--sw_window_duration", type=float, default=1, help="Sliding window duration in seconds")
     parser.add_argument("--sw_step_duration", type=float, default=1, help="Sliding window step in seconds")
     parser.add_argument("--video_fps", type=int, default=83)
-    parser.add_argument("--checkpoint_dir", type=str, default=f"{PREP}/F_diffusionatt_simple768_sc_70")
-    parser.add_argument("--log_dir", type=str, default="runs/F_diffusionatt_simple768_sc_70")
+    parser.add_argument("--checkpoint_dir", type=str, default=f"{PREP}/F_diffusionatt_wav2vec2largep_sc_70")
+    parser.add_argument("--log_dir", type=str, default="runs/F_diffusionatt_wav2vec2largep_sc_70")
     parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
     args = parser.parse_args()
     
@@ -320,15 +320,15 @@ def main():
 
 
     #______________________________________________________________________________________
-    audio_enc = SimpleAudioEncoder(output_embedding_dim=768).to(device)
-    # audio_enc = PretrainedAudioEncoder(
-    #     model="WavLM",
-    #     # model_name="facebook/wav2vec2-large-960h-lv60-self", 
-    #     freeze_encoder=True, # Start with frozen weights
-    #     # output_dim=512, # enable a trainable projection layer and compare
-    #     process=True,
-    #     pooling=True,
-    # ).to(device)
+    # audio_enc = SimpleAudioEncoder(output_embedding_dim=768).to(device)
+    audio_enc = PretrainedAudioEncoder(
+        # model="WavLM",
+        model_name="facebook/wav2vec2-large-960h-lv60-self", 
+        freeze_encoder=True, # Start with frozen weights
+        # output_dim=512, # enable a trainable projection layer and compare
+        process=True,
+        pooling=False,
+    ).to(device)
 
     time_emb = TimestepEmbedding(dim=256).to(device)
     #_____________________________________________________________________________________
