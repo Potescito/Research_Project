@@ -7,6 +7,12 @@ Research Project WiSe 2024/25
 """
 import sys
 sys.path.append('../')
+
+if sys.platform.startswith('win'):
+    PREP = "checkpoints"
+else:
+    PREP = "/home/vault/iwi5/iwi5251h/checkpoints"
+
 import os
 import time
 import argparse
@@ -39,7 +45,7 @@ def train_diffusion_model(
     total_timesteps_T, # T value used for get_diffusion_parameters (e.g., 1000)
     gradient_accumulation_steps=1, # Optional for accumulating gradients
     writer = None,
-    checkpoint_dir = "checkpoints/",
+    checkpoint_dir = f"{PREP}/",
 
     fixed_val_audio_segments=None,
     image_shape_for_validation=None, # (C,H,W)
@@ -214,7 +220,7 @@ def main():
     nSubsv = [f"sub{str(i).zfill(3)}" for i in range(51, 52)] # 75
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--epochs", type=int, default=100)
+    parser.add_argument("--epochs", type=int, default=70)
     parser.add_argument("--batch_size", type=int, default=4, help="Batch size per GPU")
     parser.add_argument("--time_steps", type=int, default=1000, help="Total diffusion timesteps")
     parser.add_argument("--lr", type=float, default=0.5e-4)
@@ -229,8 +235,8 @@ def main():
     parser.add_argument("--sw_window_duration", type=float, default=1, help="Sliding window duration in seconds")
     parser.add_argument("--sw_step_duration", type=float, default=1, help="Sliding window step in seconds")
     parser.add_argument("--video_fps", type=int, default=83)
-    parser.add_argument("--checkpoint_dir", type=str, default="checkpoints/F_diffusionatt_")
-    parser.add_argument("--log_dir", type=str, default="runs/F_diffusionatt_")
+    parser.add_argument("--checkpoint_dir", type=str, default=f"{PREP}/F_diffusionatt_simple768_sc_70")
+    parser.add_argument("--log_dir", type=str, default="runs/F_diffusionatt_simple768_sc_70")
     parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
     args = parser.parse_args()
     
@@ -314,15 +320,15 @@ def main():
 
 
     #______________________________________________________________________________________
-    # audio_enc = SimpleAudioEncoder(output_embedding_dim=512).to(device)
-    audio_enc = PretrainedAudioEncoder(
-        model="WavLM",
-        # model_name="facebook/wav2vec2-large-960h-lv60-self", 
-        freeze_encoder=True, # Start with frozen weights
-        # output_dim=512, # enable a trainable projection layer and compare
-        process=True,
-        pooling=True,
-    ).to(device)
+    audio_enc = SimpleAudioEncoder(output_embedding_dim=768).to(device)
+    # audio_enc = PretrainedAudioEncoder(
+    #     model="WavLM",
+    #     # model_name="facebook/wav2vec2-large-960h-lv60-self", 
+    #     freeze_encoder=True, # Start with frozen weights
+    #     # output_dim=512, # enable a trainable projection layer and compare
+    #     process=True,
+    #     pooling=True,
+    # ).to(device)
 
     time_emb = TimestepEmbedding(dim=256).to(device)
     #_____________________________________________________________________________________
