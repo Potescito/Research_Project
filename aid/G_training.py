@@ -197,13 +197,13 @@ def main():
     video_root = r"../data/dataset_2drt_video_only"
     keyword = "vcv"
     N_frames = 5
-    NAME = f"G_diffatt{N_frames}_simple_sc_50"
+    NAME = f"G_diffatt{N_frames}_simplelarge_sc_100"
 
     nSubst = [f"sub{str(i).zfill(3)}" for i in range(1, 51)]
     nSubsv = [f"sub{str(i).zfill(3)}" for i in range(51, 52)] # 75
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--epochs", type=int, default=50)
+    parser.add_argument("--epochs", type=int, default=100)
     parser.add_argument("--batch_size", type=int, default=4, help="Batch size per GPU")
     parser.add_argument("--time_steps", type=int, default=1000, help="Total diffusion timesteps")
     parser.add_argument("--lr", type=float, default=0.5e-4)
@@ -303,10 +303,10 @@ def main():
 
 
     #______________________________________________________________________________________
-    audio_enc = SimpleAudioEncoder(output_embedding_dim=512).to(device)
+    audio_enc = SimpleAudioEncoder(output_embedding_dim=768).to(device)
     # audio_enc = PretrainedAudioEncoder(
     #     # model="WavLM",
-    #     model_name="facebook/wav2vec2-large-960h-lv60-self", 
+    #     # model_name="facebook/wav2vec2-large-960h-lv60-self", 
     #     freeze_encoder=True, # Start with frozen weights
     #     # output_dim=512, # enable a trainable projection layer and compare
     #     process=True,

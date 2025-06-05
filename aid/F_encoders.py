@@ -73,6 +73,12 @@ class PretrainedAudioEncoder(nn.Module):
                           Shape: [Batch, NumAudioFrames, FeatureDim (self.final_output_dim)].
         """
         # Wav2Vec2Model expects input_values (raw waveform)
+
+        if audio_waveforms.shape[1] < 16000:
+            # Pad to 1 second
+            pad_len = 16000 - audio_waveforms.shape[1]
+            audio_waveforms = torch.nn.functional.pad(audio_waveforms, (0, pad_len))
+        
         attention_mask = None
         if self.process:
             processed = self.processor(audio_waveforms.cpu().numpy(), sampling_rate=16000, return_tensors="pt", padding=True)
