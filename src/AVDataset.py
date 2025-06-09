@@ -26,16 +26,15 @@ class AVDataset(Dataset):
                  video_root, 
                  filter_keyword=None, 
                  subs=None,
-                 transform=None,
                  video_max_frames=None,
                  audio_sampling_rate=16000, 
-                 frame_skip=1):
+                 frame_skip=1,
+                 *args, **kwargs):
         """
         Args:
             audio_root (str): Path to the audio root directory (e.g., ../data/audios_denoised_16khz).
             video_root (str): Path to the video root directory (e.g., ../data/dataset_2drt_video_only).
             subs (list, optional): List of subjects to extract the frames. Defaults to None (all).
-            transform (callable, optional): Optional transform to be applied on a sample -> TemporalWindowTransform or ContextualSamplingTransform 
             filter_keyword (str, optional): If provided, only load files with this keyword in the filename.
             video_max_frames (int, optional): Maximum number of frames to load per video.
             audio_sampling_rate (int): Target sampling rate for audio.
@@ -48,7 +47,6 @@ class AVDataset(Dataset):
         self.video_max_frames = video_max_frames
         self.audio_sampling_rate = audio_sampling_rate
         self.frame_skip = frame_skip
-        self.transform = transform
         
         self.pairs = []  # List to store (audio_file_path, video_file_path) pairs
         
@@ -106,9 +104,6 @@ class AVDataset(Dataset):
         frames = torch.from_numpy(frames).float() / 255.0  # (num_frames, H, W)
         frames = frames.unsqueeze(1)  # (num_frames, 1, H, W) -> channel dim 1 for 2d convs
 
-        if self.transform is not None:
-            waveform, frames = self.transform(waveform, frames) # temporal window or contextual sampling
-
         return waveform, frames, audio_path, video_path
 
     @staticmethod
@@ -145,67 +140,12 @@ if __name__ == "__main__":
                         video_root=video_root, 
                         subs=nSubs, 
                         filter_keyword="vcv",
-                        transform=None,
                         video_max_frames=None,
                         audio_sampling_rate=16000,
                         frame_skip=1)
     print("Number of pairs:", len(dataset))
-
+    
     dataloader = DataLoader(dataset, batch_size=2, shuffle=False, collate_fn=AVDataset.collate) # Batch / Collation
-    for (waveform, frames, audio_path, video_path) in dataloader:
-        print(waveform.shape, frames.shape, audio_path, video_path)
-        break
-    
-# %% Debugging Transform 1
-if __name__ == "__main__":
-    from AVDataset import AVDataset
-    from torch.utils.data import DataLoader
-    from transforms import TemporalWindowTransform
-    audio_root = r"../data/audios_denoised_16khz"
-    video_root = r"../data/dataset_2drt_video_only"
-    
-    nSubs = [f"sub{str(i).zfill(3)}" for i in range(1, 3)]
-
-    temporal_transform = TemporalWindowTransform(window_size_sec=2, audio_sample_rate=16000, video_fps=83)
-
-    dataset = AVDataset(audio_root=audio_root, 
-                        video_root=video_root, 
-                        subs=nSubs, 
-                        filter_keyword="vcv",
-                        transform=temporal_transform,
-                        video_max_frames=None,
-                        audio_sampling_rate=16000,
-                        frame_skip=1)
-    print("Number of pairs:", len(dataset))
-
-    dataloader = DataLoader(dataset, batch_size=5, shuffle=False, collate_fn=AVDataset.collate) # Batch / Collation
-    for (waveform, frames, audio_path, video_path) in dataloader:
-        print(waveform.shape, frames.shape, audio_path, video_path)
-        break
-
-# %% Debugging Transform 2
-if __name__ == "__main__":
-    from AVDataset import AVDataset
-    from torch.utils.data import DataLoader
-    from transforms import ContextualSamplingTransform
-    audio_root = r"../data/audios_denoised_16khz"
-    video_root = r"../data/dataset_2drt_video_only"
-    
-    nSubs = [f"sub{str(i).zfill(3)}" for i in range(1, 3)]
-
-    contextual_transform = ContextualSamplingTransform(context_size=2, audio_sample_rate=16000, video_fps=83)
-
-    dataset = AVDataset(audio_root=audio_root, 
-                        video_root=video_root, 
-                        subs=nSubs, 
-                        filter_keyword="vcv",
-                        transform=contextual_transform,
-                        video_max_frames=None,
-                        audio_sampling_rate=16000,
-                        frame_skip=1)
-    print("Number of pairs:", len(dataset))
-
-    dataloader = DataLoader(dataset, batch_size=5, shuffle=False, collate_fn=AVDataset.collate) # Batch / Collation
     for (waveform, frames, audio_path, video_path) in dataloader:
         print(waveform.shape, frames.shape, audio_path, video_path)
         break
@@ -220,13 +160,12 @@ if __name__ == "__main__":
     
     nSubs = [f"sub{str(i).zfill(3)}" for i in range(1, 3)]
 
-    sw_transform = SlidingWindowTransform(window_duration=0.07, step_duration=0.07, audio_sample_rate=16000, video_fps=83)
+    sw_transform = SlidingWindowTransform(window_duration=0.07, step_duration=0.02, audio_sample_rate=16000, video_fps=83)
 
     dataset = AVDataset(audio_root=audio_root, 
                         video_root=video_root, 
                         subs=nSubs, 
                         filter_keyword="vcv",
-                        transform=None,
                         video_max_frames=None,
                         audio_sampling_rate=16000,
                         frame_skip=1)
