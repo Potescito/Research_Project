@@ -32,3 +32,28 @@
 
     Explore any applicable no-reference quantitative metrics for video quality or denoising.
     Continue hyperparameter tuning and architectural refinements based on results with video segment processing.
+
+
+-----------------
+-----------------
+Informs Future Work: The quality of this full video output will tell us exactly what to improve next. If the video looks good but has slight seams, we know we need to improve the chunk blending (overlap-add). If the articulation seems to "jump" or be inconsistent over time, we know we need to improve the model's internal temporal modeling (e.g., with temporal attention).
+Implementation Plan:
+
+This will primarily involve creating a new, dedicated inference script or significantly modifying F_inference.py.
+
+Data Preparation for Inference:
+
+Load a single, long audio-video pair from your dataset (e.g., from AVDataset).
+Use your SlidingWindowTransform to create overlapping chunks. To do this, you'll set step_duration to be less than window_duration. For your 5-frame window, a step corresponding to 2 or 3 frames would be a good start (e.g., step_duration = 2 / 83.0). This will produce a batch of [N_chunks, 5, C, H, W] video sequences and corresponding audio chunks.
+Batch Denoising:
+
+Feed these overlapping chunks (in mini-batches if there are too many for GPU memory) through your trained sample_ddpm function to get a batch of denoised 5-frame chunks.
+Reconstruction via Overlap-Add:
+
+This is the core of the new logic. You'll need an "overlap-add" function that stitches the denoised chunks back together smoothly.
+Algorithm:
+Initialize a "sum" buffer (a tensor for the full video, filled with zeros) and a "normalization" buffer (also filled with zeros).
+For each denoised 5-frame chunk, add its contents to the corresponding position in the "sum" buffer.
+For each pixel you've just added, also increment the corresponding position in the "normalization" buffer.
+After processing all chunks, divide the "sum" buffer by the "normalization" buffer (element-wise) where the normalization buffer is not zero. This averages the predictions in the overlapping regions, effectively blending them.
+*Improvement (Windowing Function): For even smoother transitions, before adding a chunk to the sum buffer, multiply it by a windowing function (like a Hann or triangular window). This gives more weight to the predictions in the center of a chunk and less to the edges, reducing artifacts.
