@@ -197,13 +197,13 @@ def main():
     video_root = r"../data/dataset_2drt_video_only"
     keyword = "vcv"
     N_frames = 5
-    NAME = f"G_diffatt{N_frames}_simplelarge_sc_100"
+    NAME = f"G_diffatt{N_frames}_wavlm_trai_sc0510shuffle_2000"
 
     nSubst = [f"sub{str(i).zfill(3)}" for i in range(1, 51)]
     nSubsv = [f"sub{str(i).zfill(3)}" for i in range(51, 52)] # 75
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--epochs", type=int, default=100)
+    parser.add_argument("--epochs", type=int, default=2000)
     parser.add_argument("--batch_size", type=int, default=4, help="Batch size per GPU")
     parser.add_argument("--time_steps", type=int, default=1000, help="Total diffusion timesteps")
     parser.add_argument("--lr", type=float, default=0.5e-4)
@@ -257,7 +257,7 @@ def main():
     )
 
     #_______________________________________________________________________________________
-    train_loader = DataLoader(dataset_t, batch_size=args.batch_size,
+    train_loader = DataLoader(dataset_t, batch_size=args.batch_size, shuffle=True,
                               collate_fn=lambda batch: AVDataset.collate(batch, sw_transform))
     val_loader = DataLoader(dataset_v, batch_size=args.batch_size,
                             collate_fn=lambda batch: AVDataset.collate(batch, sw_transform))
@@ -303,15 +303,15 @@ def main():
 
 
     #______________________________________________________________________________________
-    audio_enc = SimpleAudioEncoder(output_embedding_dim=768).to(device)
-    # audio_enc = PretrainedAudioEncoder(
-    #     # model="WavLM",
-    #     # model_name="facebook/wav2vec2-large-960h-lv60-self", 
-    #     freeze_encoder=True, # Start with frozen weights
-    #     # output_dim=512, # enable a trainable projection layer and compare
-    #     process=True,
-    #     pooling=False,
-    # ).to(device)
+    # audio_enc = SimpleAudioEncoder(output_embedding_dim=768).to(device)
+    audio_enc = PretrainedAudioEncoder(
+        model="WavLM",
+        # model_name="facebook/wav2vec2-large-960h-lv60-self", 
+        freeze_encoder=False, # Start with frozen weights
+        # output_dim=512, # enable a trainable projection layer and compare
+        process=True,
+        pooling=False,
+    ).to(device)
 
     time_emb = TimestepEmbedding(dim=256).to(device)
     #_____________________________________________________________________________________
@@ -331,7 +331,7 @@ def main():
         list(unet.parameters()) + list(audio_enc.parameters()), # If audio enc has a projection then it's added
         lr=args.lr
     )
-    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=8, min_lr=1e-7)
+    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=10, min_lr=1e-8)
     #_____________________________________________________________________________________
     betas = cosine_beta_schedule(timesteps=args.time_steps)
     diffusion_params_dict = get_diffusion_parameters(betas=betas, device=device)
